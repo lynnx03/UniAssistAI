@@ -22,11 +22,11 @@ GPA calculation, a scholarship listing, and an advisor dashboard.
 
 **GPA calculation from a transcript**
 
-![GPA calculation page](img/image1.png)
+![GPA calculation page](C:\Users\UBIZ02\UniAssistAI\img\image1.png)
 
 **Scholarships**
 
-![Scholarships page](img/image2.png)
+![Scholarships page](C:\Users\UBIZ02\UniAssistAI\img\image2.png)
 
 ## Security
 
