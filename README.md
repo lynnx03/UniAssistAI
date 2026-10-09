@@ -1,118 +1,118 @@
-# UniAssist — ผู้ช่วยวิชาการนักศึกษา (Text-to-SQL Chatbot)
+# UniAssist — Student Academic Assistant (Text-to-SQL Chatbot)
 
-ระบบผู้ช่วยด้านวิชาการสำหรับนักศึกษา/อาจารย์ที่ปรึกษา KMITL สร้างด้วย **Flask + LLM**
-ผู้ใช้พิมพ์คำถามภาษาไทย ระบบให้ LLM เขียน SQL รันบนฐานข้อมูลหลักสูตร (read-only)
-แล้วเรียบเรียงคำตอบกลับมา พร้อมโหมดสนทนาทั่วไป, คำนวณ GPA, รายการทุน และแดชบอร์ดอาจารย์
+An academic assistant for KMITL students and academic advisors, built with **Flask + LLM**.
+Users ask questions in Thai, the LLM writes SQL that runs against the curriculum database (read-only),
+and the results are turned into a natural-language answer. It also includes a general chat mode, a GPA calculator, a scholarship list, and an advisor dashboard.
 
-## ฟีเจอร์หลัก
+## Key Features
 
-- **ถาม-ตอบข้อมูลหลักสูตร (Text-to-SQL)** — LLM ตัดสินเองว่าเป็นคำถามดึงข้อมูล (SQL) หรือคำถามคุยเล่น (CHAT); เห็น SQL ที่โมเดลเขียน + ตารางผลลัพธ์ดิบ + latency แต่ละขั้น
-- **โหมดสนทนา** — ตอบแบบ chatbot โดย ground ด้วยข้อเท็จจริงจาก DB (ลด hallucination) และใช้เป็น fallback เมื่อ SQL ผิดพลาด
-- **คำนวณ GPA** — paste transcript หรือแก้รายวิชาในตาราง แล้วคำนวณ GPA รายเทอม/สะสม + จัดสถานะ (เสี่ยงรีไทร์/ภาคทัณฑ์/เกียรตินิยม) โดยอิงค่าเกรดและเกณฑ์จาก DB ไม่ hardcode
-- **รายการทุนการศึกษา**
-- **แดชบอร์ดอาจารย์ที่ปรึกษา** — ดูนักศึกษาในความดูแล + GPA รายเทอม + สรุปความเสี่ยง
-- **Google OAuth** — ล็อกอินด้วยบัญชี Google จำกัดโดเมน แบ่ง role (student / advisor / dev)
+- **Curriculum Q&A (Text-to-SQL)** — the LLM decides whether a question needs data retrieval (SQL) or is casual conversation (CHAT); the UI shows the generated SQL, the raw result table, and the latency of each step
+- **Chat mode** — answers like a chatbot, grounded in facts from the DB (reduces hallucination), and used as a fallback when SQL fails
+- **GPA calculator** — paste a transcript or edit courses in the table to calculate term/cumulative GPA and academic status (retirement risk / probation / honors), using grade values and criteria from the DB rather than hardcoded values
+- **Scholarship list**
+- **Advisor dashboard** — view advisees, their term GPAs, and a risk summary
+- **Google OAuth** — sign in with a Google account restricted by domain, with roles (student / advisor / dev)
 
-## ภาพตัวอย่าง (Demo)
+## Demo
 
-**หน้าแชท — ถาม-ตอบข้อมูลหลักสูตร**
+**Chat page — curriculum Q&A**
 
-![หน้าแชท UniAssist](img/image.png)
+![UniAssist chat page](img/image.png)
 
-**คำนวณเกรดจาก Transcript**
+**GPA calculation from a transcript**
 
-![หน้าคำนวณเกรด](img/image1.png)
+![GPA calculator page](img/image1.png)
 
-**ทุนการศึกษา**
+**Scholarships**
 
-![หน้าทุนการศึกษา](img/image2.png)
+![Scholarships page](img/image2.png)
 
-## ความปลอดภัย
+## Security
 
-เนื่องจากนักศึกษาเป็นคนพิมพ์คำถามเอง การรัน SQL จึงถูกจำกัดหลายชั้น:
+Because students type the questions themselves, SQL execution is restricted at several layers:
 
-- ต่อ DB แบบ **read-only** จริง (`file:...?mode=ro`) — LLM เขียน `DELETE`/`UPDATE` ไม่ได้
-- ตรวจ SQL ให้เป็น `SELECT`/`WITH` เดี่ยวๆ, บล็อกคำสั่งเขียน, กัน multiple statements
-- เติม `LIMIT` อัตโนมัติถ้าไม่มี — กันดึงทั้งตาราง
-- Google Client Secret อ่านฝั่ง server เท่านั้น, เก็บ user ใน session cookie ที่เซ็นแล้ว
+- The DB connection is truly **read-only** (`file:...?mode=ro`) — the LLM cannot run `DELETE`/`UPDATE`
+- SQL is validated to be a single `SELECT`/`WITH` statement; write statements and multiple statements are blocked
+- A `LIMIT` is added automatically if missing — prevents dumping entire tables
+- The Google Client Secret is only read server-side; the user is stored in a signed session cookie
 
-## โครงสร้างไฟล์
+## Project Structure
 
-| ไฟล์ | หน้าที่ |
+| File | Purpose |
 |---|---|
-| `app.py` | เว็บ Flask — routes `/`, `/ask`, `/calc-gpa`, `/scholarships`, `/dashboard-data`, `/dev-info` |
-| `text_to_sql_chatbot.py` | แกน Text-to-SQL: สร้าง prompt, เรียก LLM, ตรวจ/รัน SQL, เรียบเรียงคำตอบ (รันเป็น CLI ได้ด้วย) |
-| `assist_logic.py` | ตรรกะร่วม: parse transcript, คำนวณ GPA, จัดสถานะจากเกณฑ์ใน DB |
-| `google_auth.py` | Google OAuth 2.0 + decorators คุม role (`login_required`, `advisor_required`, `dev_required`) |
-| `build_qwen_db.py` | สร้าง DB จาก JSON ที่ Qwen สกัดจากตารางหลักสูตร |
-| `build_chatbot_db.py` | ประกอบ DB ของ chatbot (แผนการเรียนจาก Ground Truth + ส่วนที่เหลือจาก Qwen) |
-| `build_extra_tables.py` | เพิ่มตารางเสริม: `grade_scale`, `rules`, `scholarships`, `students`, `student_term_gpa` (idempotent) |
+| `app.py` | Flask web app — routes `/`, `/ask`, `/calc-gpa`, `/scholarships`, `/dashboard-data`, `/dev-info` |
+| `text_to_sql_chatbot.py` | Text-to-SQL core: builds prompts, calls the LLM, validates/runs SQL, composes answers (also runnable as a CLI) |
+| `assist_logic.py` | Shared logic: transcript parsing, GPA calculation, status classification based on DB criteria |
+| `google_auth.py` | Google OAuth 2.0 + role decorators (`login_required`, `advisor_required`, `dev_required`) |
+| `build_qwen_db.py` | Builds a DB from the JSON that Qwen extracted from the curriculum tables |
+| `build_chatbot_db.py` | Assembles the chatbot DB (study plans from Ground Truth + the rest from Qwen) |
+| `build_extra_tables.py` | Adds extra tables: `grade_scale`, `rules`, `scholarships`, `students`, `student_term_gpa` (idempotent) |
 | `templates/` | `login.html`, `index.html` |
-| `data/` | ข้อมูลต้นทาง (GT, ผลสกัด, ตารางหลักสูตร) |
-| `chatbot_teach_table.db` | ฐานข้อมูลหลักที่แอปใช้งาน |
+| `data/` | Source data (ground truth, extraction results, curriculum tables) |
+| `chatbot_teach_table.db` | Main database used by the app |
 
-## การติดตั้ง
+## Installation
 
-ต้องมี Python 3.10+
+Requires Python 3.10+
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## ตั้งค่า `.env`
+## Configure `.env`
 
-สร้างไฟล์ `.env` ในโฟลเดอร์เดียวกันกับ `app.py`:
+Create a `.env` file in the same folder as `app.py`:
 
 ```ini
-# LLM (OpenAI-compatible — ใช้ได้กับ Qwen / DeepSeek / Typhoon / Gemini ผ่าน OpenRouter ฯลฯ)
+# LLM (OpenAI-compatible — works with Qwen / DeepSeek / Typhoon / Gemini via OpenRouter, etc.)
 LLM_BASE_URL=https://openrouter.ai/api/v1
 LLM_API_KEY=sk-...
 LLM_MODEL=qwen/qwen3-235b-a22b
-LLM_PROVIDER=            # เว้นว่างได้ (auto)
+LLM_PROVIDER=            # optional (auto)
 
-# ฐานข้อมูล
+# Database
 DB_PATH=chatbot_teach_table.db
 
-# Google OAuth (ดูขั้นตอนละเอียดใน GOOGLE_AUTH_SETUP.md)
+# Google OAuth (see GOOGLE_AUTH_SETUP.md for detailed steps)
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 GOOGLE_REDIRECT_URI=http://localhost:5000/auth/callback
-FLASK_SECRET_KEY=<สุ่มยาวๆ>
+FLASK_SECRET_KEY=<long random string>
 
-# สิทธิ์การเข้าใช้ (คั่นด้วยจุลภาค)
+# Access control (comma-separated)
 ALLOWED_DOMAINS=kmitl.ac.th
 DEV_EMAILS=you@kmitl.ac.th
 ADVISOR_EMAILS=advisor@kmitl.ac.th
 STUDENT_EMAILS=
 ```
 
-> การตั้งค่า Google OAuth แบบละเอียด (สร้าง credential, redirect URI) ดูที่ [GOOGLE_AUTH_SETUP.md](GOOGLE_AUTH_SETUP.md)
+> For detailed Google OAuth setup (creating credentials, redirect URI), see [GOOGLE_AUTH_SETUP.md](GOOGLE_AUTH_SETUP.md)
 
-## การรัน
+## Running
 
 ```bash
 python app.py
 ```
 
-เปิดเบราว์เซอร์ที่ http://localhost:5000 (ต้องล็อกอินด้วย Google ก่อนถึงจะใช้งานได้)
+Open http://localhost:5000 in your browser (you must sign in with Google before using the app).
 
-### รันแกน chatbot แบบ CLI (ไว้เทส/ทำ eval)
+### Run the chatbot core as a CLI (for testing/evaluation)
 
 ```bash
-python text_to_sql_chatbot.py                                  # โหมดโต้ตอบ
-python text_to_sql_chatbot.py -q "หลักสูตร IT จบกี่หน่วยกิต"
-python text_to_sql_chatbot.py --sql "SELECT ..."               # รัน SQL ตรงๆ
+python text_to_sql_chatbot.py                                  # interactive mode
+python text_to_sql_chatbot.py -q "หลักสูตร IT จบกี่หน่วยกิต"      # "How many credits to graduate from the IT program?"
+python text_to_sql_chatbot.py --sql "SELECT ..."               # run SQL directly
 ```
 
-## สร้างฐานข้อมูลใหม่ (ถ้าต้องการ build เอง)
+## Rebuilding the Database (if you want to build it yourself)
 
 ```bash
 python build_qwen_db.py ./data/extracted_teach_table ./qwen_teach_table.db
-python build_chatbot_db.py       # ประกอบ chatbot_teach_table.db
-python build_extra_tables.py     # เพิ่ม grade_scale / rules / scholarships / students
+python build_chatbot_db.py       # assembles chatbot_teach_table.db
+python build_extra_tables.py     # adds grade_scale / rules / scholarships / students
 ```
 
-## หมายเหตุ
+## Notes
 
-- ตาราง `students` / `student_term_gpa` ปัจจุบันเป็นข้อมูล mock เตรียมไว้ต่อกับ registrar API ภายหลัง (ดู flow การดึงข้อมูลจริงใน [README-2.md](README-2.md))
-- บาง provider ของ LLM ตอบไม่นิ่ง (คืน `NO_ANSWER` เป็นครั้งคราวตามช่วงเวลา) — ระบบมี retry-on-NO_ANSWER รองรับแล้ว
+- The `students` / `student_term_gpa` tables currently contain mock data, prepared to be connected to the registrar API later (see the real data-fetching flow in [README-2.md](README-2.md))
+- Some LLM providers are inconsistent (occasionally returning `NO_ANSWER` depending on the time of day) — the system already handles this with retry-on-NO_ANSWER
