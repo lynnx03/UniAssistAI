@@ -1,0 +1,890 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UniAssist — ผู้ช่วยนักศึกษา KMITL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #15457A;
+    --navy-600: #1b5698;
+    --navy-dark: #0f3560;
+    --orange: #E8762C;
+    --orange-600: #d3641c;
+    --orange-dark: #cf6420;
+    --bg: #f5f7fb;
+    --bg-2: #eef2f8;
+    --card: #ffffff;
+    --border: #e7ebf1;
+    --line: #e7ebf1;
+    --text: #1b2430;
+    --ink: #1b2430;
+    --muted: #6b7688;
+    --green: #12995a;
+    --green-bg: #e6f6ee;
+    --amber: #E8762C;
+    --red: #e0483d;
+    --red-bg: #fdecea;
+    --shadow: 0 1px 2px rgba(16,24,40,.04), 0 4px 14px rgba(16,24,40,.05);
+    --shadow-lg: 0 10px 34px rgba(16,24,40,.12);
+    --radius: 16px;
+    --radius-sm: 11px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: "IBM Plex Sans Thai", "Segoe UI", Tahoma, sans-serif;
+    margin: 0;
+    color: var(--text);
+    background:
+      radial-gradient(1100px 380px at 100% -8%, #eaf1fb 0%, transparent 60%),
+      radial-gradient(900px 340px at -10% 0%, #fdeede 0%, transparent 55%),
+      var(--bg);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- header ---------- */
+  header {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(255,255,255,.82);
+    backdrop-filter: saturate(180%) blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 12px clamp(14px, 4vw, 32px);
+    display: flex; align-items: center; gap: 12px;
+  }
+  header .logo {
+    width: 38px; height: 38px; border-radius: 11px;
+    background: linear-gradient(135deg, var(--navy), var(--navy-600));
+    color: #fff; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 19px; box-shadow: 0 4px 12px rgba(21,69,122,.28);
+  }
+  header h1 { font-size: 18px; margin: 0; font-weight: 700; letter-spacing: -.2px; color: var(--navy); }
+  header .tag { font-size: 12px; color: var(--muted); margin-left: 4px; padding-top: 2px; }
+  header .spacer { margin-left: auto; }
+  .auth-area { display: flex; align-items: center; gap: 9px; }
+  .auth-area img { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--orange); object-fit: cover; }
+  .auth-area .uname { font-size: 13px; font-weight: 600; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .role-badge { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+  .role-badge.student { background: #e6f0fb; color: var(--navy); }
+  .role-badge.advisor { background: #fdf1e3; color: var(--orange-dark); }
+  .role-badge.dev { background: #e8eaf3; color: #4b3fa6; }
+  .auth-btn {
+    padding: 8px 14px; font-size: 13px; font-weight: 600; border: none; border-radius: 10px;
+    background: linear-gradient(135deg, var(--orange), var(--orange-600)); color: white;
+    cursor: pointer; font-family: inherit; box-shadow: 0 3px 10px rgba(232,118,44,.28); transition: transform .12s, box-shadow .12s;
+  }
+  .auth-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(232,118,44,.34); }
+  .auth-btn.ghost { background: var(--bg-2); color: var(--navy); box-shadow: none; }
+  .auth-btn.ghost:hover { background: #e3e9f2; }
+
+  /* ---------- tabs ---------- */
+  nav.tabs {
+    position: sticky; top: 63px; z-index: 40;
+    display: flex; gap: 6px; padding: 10px clamp(14px, 4vw, 32px);
+    overflow-x: auto; scrollbar-width: none;
+    background: rgba(245,247,251,.7); backdrop-filter: blur(6px);
+  }
+  nav.tabs::-webkit-scrollbar { display: none; }
+  nav.tabs button {
+    background: transparent; color: var(--muted); border: 1px solid transparent;
+    padding: 9px 16px; font-size: 14px; font-weight: 600; cursor: pointer;
+    border-radius: 999px; white-space: nowrap; font-family: inherit; transition: .15s;
+  }
+  nav.tabs button:hover { color: var(--navy); background: var(--card); }
+  nav.tabs button.active {
+    color: #fff; background: linear-gradient(135deg, var(--navy), var(--navy-600));
+    box-shadow: 0 4px 12px rgba(21,69,122,.26);
+  }
+
+  main { max-width: 980px; margin: 20px auto 60px; padding: 0 clamp(14px, 4vw, 24px); }
+  .tabpage { display: none; animation: fade .25s ease; }
+  .tabpage.active { display: block; }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } }
+  h2.page-title { font-size: 23px; font-weight: 700; letter-spacing: -.3px; color: var(--ink); margin: 0 0 4px; }
+  .sub { color: var(--muted); margin-bottom: 18px; font-size: 14px; }
+
+  /* ---------- form controls ---------- */
+  textarea, input[type=text] {
+    width: 100%; font-family: inherit; font-size: 15px; padding: 12px 14px;
+    border: 1px solid var(--border); border-radius: var(--radius-sm); resize: vertical;
+    background: var(--card); color: var(--ink); transition: border-color .15s, box-shadow .15s;
+  }
+  textarea:focus, input[type=text]:focus { outline: none; border-color: var(--navy); box-shadow: 0 0 0 3px rgba(21,69,122,.12); }
+  select { font-family: inherit; font-size: 14px; padding: 8px 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--card); color: var(--ink); cursor: pointer; }
+  select:focus { outline: none; border-color: var(--navy); box-shadow: 0 0 0 3px rgba(21,69,122,.12); }
+  .flt-label { font-size: 13px; font-weight: 600; color: var(--muted); display: inline-flex; align-items: center; gap: 7px; }
+  .btn {
+    padding: 11px 20px; font-size: 14px; font-weight: 600; border: none; border-radius: var(--radius-sm);
+    background: var(--navy); color: white; cursor: pointer; font-family: inherit; transition: transform .12s, box-shadow .12s, background .15s;
+    box-shadow: 0 3px 10px rgba(21,69,122,.2);
+  }
+  .btn:hover { background: var(--navy-600); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(21,69,122,.26); }
+  .btn:disabled { background: #9aa5b1; cursor: default; transform: none; box-shadow: none; }
+  .btn.orange { background: linear-gradient(135deg, var(--orange), var(--orange-600)); box-shadow: 0 3px 10px rgba(232,118,44,.26); }
+  .btn.orange:hover { filter: brightness(1.03); }
+  .btn.ghost { background: var(--bg-2); color: var(--navy); box-shadow: none; }
+  .btn.ghost:hover { background: #e3e9f2; }
+  .row { display: flex; gap: 10px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
+
+  .status { margin-top: 12px; color: var(--muted); font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .status::before { content: ""; width: 15px; height: 15px; border: 2px solid var(--bg-2); border-top-color: var(--navy); border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .section {
+    margin-top: 16px; padding: 18px 20px; background: var(--card);
+    border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+  }
+  .section h3 { font-size: 12px; margin: 0 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+
+  pre {
+    background: #0f1d30; color: #d6e2f2; padding: 13px 15px; border-radius: var(--radius-sm);
+    overflow-x: auto; font-size: 13px; margin: 0; white-space: pre-wrap; word-break: break-word;
+    font-family: "SF Mono", Consolas, monospace;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin-top: 4px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 9px 12px; text-align: left; }
+  thead th { background: transparent; color: var(--muted); font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; border-bottom: 2px solid var(--line); }
+  tbody tr { transition: background .12s; }
+  tbody tr:hover td { background: var(--bg); }
+  .error-box { background: var(--red-bg); border: 1px solid #f3b4b4; color: #8f1d1d; padding: 13px 16px; border-radius: var(--radius-sm); margin-top: 16px; }
+  .hidden { display: none; }
+  .note { font-size: 13px; color: #8a5a1e; background: #fdf4e8; border: 1px solid #f4dcbc; border-radius: var(--radius-sm); padding: 11px 14px; margin-bottom: 16px; line-height: 1.5; }
+
+  /* ---------- chat ---------- */
+  .chat-thread { display: flex; flex-direction: column; gap: 16px; padding: 6px 0 14px; }
+  .chat-empty { text-align: center; padding: 34px 16px 20px; color: var(--muted); }
+  .chat-empty .icon {
+    width: 62px; height: 62px; margin: 0 auto 14px; border-radius: 20px; font-size: 30px;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, var(--navy-050,#eef4fb), #fdeede);
+    box-shadow: var(--shadow);
+  }
+  .chat-empty h2 { color: var(--ink); font-size: 20px; margin: 0 0 6px; }
+  .chat-empty p { margin: 0 0 16px; font-size: 14px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .chip {
+    background: var(--card); color: var(--navy); border: 1px solid var(--border);
+    font-size: 13px; padding: 8px 14px; border-radius: 999px; cursor: pointer; font-family: inherit;
+    box-shadow: var(--shadow); transition: .14s;
+  }
+  .chip:hover { border-color: var(--navy); background: #f4f8fd; transform: translateY(-1px); }
+
+  .msg { max-width: 82%; padding: 13px 16px; border-radius: 18px; line-height: 1.55; font-size: 15px; box-shadow: var(--shadow); animation: pop .18s ease; }
+  @keyframes pop { from { opacity: 0; transform: translateY(8px); } }
+  .msg.user { align-self: flex-end; background: linear-gradient(135deg, var(--orange), var(--orange-600)); color: #fff; border-bottom-right-radius: 6px; }
+  .msg.assistant { align-self: flex-start; background: var(--card); border: 1px solid var(--border); border-bottom-left-radius: 6px; }
+  .msg.error { align-self: flex-start; background: var(--red-bg); border: 1px solid #f3b4b4; color: #8f1d1d; border-bottom-left-radius: 6px; }
+  .answer-text { white-space: pre-wrap; }
+  .answer-text.md { white-space: normal; }
+  .answer-text.md p { margin: 0 0 9px; }
+  .answer-text.md p:last-child { margin-bottom: 0; }
+  .answer-text.md ul, .answer-text.md ol { margin: 6px 0 10px; padding-left: 20px; }
+  .answer-text.md li { margin: 3px 0; }
+  .answer-text.md li::marker { color: var(--orange); }
+  .answer-text.md .md-h { margin: 12px 0 6px; font-size: 15.5px; font-weight: 700; color: var(--navy); line-height: 1.35; }
+  .answer-text.md .md-h:first-child { margin-top: 0; }
+  .answer-text.md strong { font-weight: 700; }
+  .answer-text.md code { background: rgba(21,69,122,.08); padding: 1px 6px; border-radius: 6px; font-size: 13px; font-family: "SF Mono", Consolas, monospace; }
+  .answer-text.md a { color: var(--navy); font-weight: 600; }
+  /* บน bubble ผู้ใช้ (พื้นส้ม) โค้ด/ลิงก์อ่านง่ายขึ้น */
+  .msg.user .answer-text.md code { background: rgba(255,255,255,.22); }
+  .mode-tag { margin-top: 9px; font-size: 11.5px; font-weight: 600; display: inline-block; padding: 3px 9px; border-radius: 999px; background: #eef1f6; color: var(--muted); }
+  .mode-tag.data { background: var(--green-bg); color: var(--green); }
+  .timing-chip { margin-top: 8px; margin-left: 6px; font-size: 12px; color: var(--muted); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; display: inline-block; }
+  .timing-chip b { color: var(--navy); font-weight: 700; }
+  .msg-details { margin-top: 11px; border-top: 1px dashed var(--line); padding-top: 9px; }
+  .msg-details summary { cursor: pointer; font-size: 13px; color: var(--navy); font-weight: 600; list-style: none; user-select: none; }
+  .msg-details summary::-webkit-details-marker { display: none; }
+  .msg-details summary::before { content: "▸ "; }
+  .msg-details[open] summary::before { content: "▾ "; }
+  .det-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 11px 0 4px; font-weight: 700; }
+  .typing { display: inline-flex; gap: 5px; padding: 4px 2px; }
+  .typing span { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); opacity: .5; animation: blink 1.2s infinite both; }
+  .typing span:nth-child(2) { animation-delay: .2s; }
+  .typing span:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+
+  .composer {
+    position: sticky; bottom: 16px; margin-top: 14px;
+    display: flex; gap: 10px; align-items: flex-end;
+    background: var(--card); border: 1px solid var(--border); border-radius: 18px;
+    padding: 9px 9px 9px 6px; box-shadow: var(--shadow-lg);
+  }
+  .composer textarea { border: none; box-shadow: none !important; resize: none; max-height: 170px; padding: 10px 12px; font-size: 15px; background: transparent; }
+  .send-btn {
+    width: 46px; height: 46px; border-radius: 13px; border: none; flex: 0 0 auto; cursor: pointer;
+    background: linear-gradient(135deg, var(--navy), var(--navy-600)); color: #fff; font-size: 19px;
+    display: flex; align-items: center; justify-content: center; transition: transform .12s, box-shadow .12s;
+    box-shadow: 0 4px 12px rgba(21,69,122,.28);
+  }
+  .send-btn:hover { transform: translateY(-1px) scale(1.03); }
+  .send-btn:disabled { background: #9aa5b1; box-shadow: none; transform: none; cursor: default; }
+
+  /* ---------- cards / scholarships ---------- */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(255px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px 17px; box-shadow: var(--shadow); position: relative; overflow: hidden;
+    transition: transform .15s, box-shadow .15s;
+  }
+  .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: linear-gradient(var(--orange), var(--orange-600)); }
+  .card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+  .card h4 { margin: 0 0 8px; color: var(--navy); font-size: 15.5px; font-weight: 700; line-height: 1.35; }
+  .card .amt { color: var(--orange-dark); font-weight: 700; font-size: 15px; }
+  .card .meta { font-size: 12.5px; color: var(--muted); margin-top: 7px; line-height: 1.45; }
+  .card .meta a { color: var(--navy); font-weight: 600; text-decoration: none; }
+  .card .meta a:hover { text-decoration: underline; }
+
+  /* ---------- dashboard ---------- */
+  .summary-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; margin-bottom: 18px; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; box-shadow: var(--shadow); }
+  .stat.filter-tile { cursor: pointer; transition: transform .12s, box-shadow .12s, border-color .12s; }
+  .stat.filter-tile:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+  .stat.filter-tile.active { border-color: var(--navy); box-shadow: 0 0 0 2px rgba(21,69,122,.18); }
+  .stat .num { font-size: 30px; font-weight: 800; line-height: 1; letter-spacing: -1px; }
+  .stat .lbl { font-size: 12.5px; color: var(--muted); margin-top: 7px; font-weight: 600; }
+  .pill { padding: 3px 11px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; display: inline-block; }
+  .pill.green { background: var(--green-bg); color: var(--green); }
+  .pill.amber { background: #fdf1e3; color: var(--orange-dark); }
+  .pill.red { background: var(--red-bg); color: var(--red); }
+  .pill.gray { background: var(--bg-2); color: var(--muted); }
+  .clickable { cursor: pointer; }
+  .clickable:hover td { background: #f0f5fb; }
+
+  @media (max-width: 620px) {
+    .msg { max-width: 92%; }
+    header .tag { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">U</div>
+  <div>
+    <h1>UniAssist</h1>
+  </div>
+  <span class="tag">ผู้ช่วยนักศึกษา · KMITL</span>
+  <span class="spacer"></span>
+  <div id="auth-area" class="auth-area"></div>
+</header>
+
+<nav class="tabs">
+  <button data-tab="chat" class="active">💬 แชท</button>
+  <button data-tab="gpa">🧮 คำนวณเกรด</button>
+  <button data-tab="scholar">🎓 ทุนการศึกษา</button>
+  <button data-tab="advisor">📊 Dashboard อาจารย์</button>
+  <button data-tab="dev" style="display:none">🛠️ Dev</button>
+</nav>
+
+<main>
+  <!-- ===================== TAB: CHAT ===================== -->
+  <section id="tab-chat" class="tabpage active">
+    <div id="chat-thread" class="chat-thread">
+      <div id="chat-empty" class="chat-empty">
+        <div class="icon">💬</div>
+        <h2>สวัสดี! ถามอะไรก็ได้เกี่ยวกับหลักสูตร</h2>
+        <p>ตารางเรียน · แผนการเรียน · กฎระเบียบ · ค่าเกรด · ทุนการศึกษา</p>
+        <div class="chips">
+          <button type="button" class="chip ex">หลักสูตร IT จบกี่หน่วยกิต</button>
+          <button type="button" class="chip ex">เกรด B+ มีค่าเท่าไหร่</button>
+          <button type="button" class="chip ex">GPA เท่าไหร่ถึงโดนรีไทร์</button>
+          <button type="button" class="chip ex">เกียรตินิยมอันดับหนึ่งต้องได้ GPA เท่าไหร่</button>
+          <button type="button" class="chip ex">มีทุนอะไรบ้าง</button>
+        </div>
+      </div>
+    </div>
+    <div class="composer">
+      <textarea id="question" rows="1" placeholder="พิมพ์คำถาม…  (Enter เพื่อส่ง · Shift+Enter ขึ้นบรรทัดใหม่)"></textarea>
+      <button id="ask-btn" class="send-btn" title="ส่ง">➤</button>
+    </div>
+  </section>
+
+  <!-- ===================== TAB: GPA ===================== -->
+  <section id="tab-gpa" class="tabpage">
+    <h2 class="page-title">คำนวณเกรดจาก Transcript</h2>
+    <div class="sub">วางข้อความ transcript ลงกล่อง ระบบจะดึงรายวิชา + คำนวณ GPA (วิชา S/U/T/W ไม่ถูกนับ)</div>
+    <div class="note" id="gpa-note">💡 คัดลอกข้อความ transcript จากระบบทะเบียน KMITL มาวางได้เลย (รองรับรูปแบบ รหัสวิชา/ชื่อ/หน่วยกิต/เกรด และหัวข้อภาคเรียน) — วิชา S/U/T และวิชาที่ยังไม่มีเกรดจะไม่ถูกนับใน GPA · ถ้า parse ไม่ครบ แก้/เพิ่มแถวในตารางแล้วกด "คำนวณใหม่" ได้</div>
+
+    <textarea id="transcript" rows="8" placeholder="ตัวอย่าง:
+06016101  Fundamental Programming        3  A
+06016102  Discrete Mathematics           3  B+
+90642001  English for Communication      3  S
+06016103  Data Structures                3  C+"></textarea>
+    <div class="row">
+      <button id="parse-btn" class="btn orange">แยกวิชา &amp; คำนวณ</button>
+      <button id="addrow-btn" class="btn ghost" type="button">+ เพิ่มแถว</button>
+    </div>
+
+    <div id="gpa-status" class="status hidden">กำลังคำนวณ…</div>
+    <div id="gpa-error" class="error-box hidden"></div>
+
+    <div id="gpa-result" class="hidden">
+      <div class="section">
+        <h3>รายวิชาที่ดึงได้ (แก้ไขได้)</h3>
+        <div id="gpa-table-wrap"></div>
+        <div class="row">
+          <button id="recalc-btn" class="btn ghost" type="button">↻ คำนวณใหม่จากตาราง</button>
+        </div>
+      </div>
+      <div class="section">
+        <h3>สรุปผล</h3>
+        <div id="gpa-summary"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== TAB: SCHOLARSHIPS ===================== -->
+  <section id="tab-scholar" class="tabpage">
+    <h2 class="page-title">ทุนการศึกษา</h2>
+    <div class="sub">รายการทุน (ถามรายละเอียดเพิ่มได้ที่แท็บแชท)</div>
+    <div class="note">ℹ️ ข้อมูลทุนดึงจาก <b>เว็บคณะ IT</b> (it.kmitl.ac.th/th/scholarship) เมื่อ 23 ส.ค. 2026 — รายละเอียด/กำหนดการอาจเปลี่ยน โปรดตรวจสอบหน้าเว็บทางการอีกครั้ง</div>
+    <div id="scholar-status" class="status">กำลังโหลด…</div>
+    <div id="scholar-cards" class="cards"></div>
+  </section>
+
+  <!-- ===================== TAB: ADVISOR DASHBOARD ===================== -->
+  <section id="tab-advisor" class="tabpage">
+    <h2 class="page-title">Dashboard อาจารย์ที่ปรึกษา</h2>
+    <div class="sub">รายชื่อนักศึกษาในความดูแล + สถานะตามเกณฑ์ GPA</div>
+    <div class="note">ℹ️ ข้อมูลนักศึกษาเป็น <b>ตัวอย่าง (mock)</b> สำหรับเดโม — ต่อ registrar API จริงภายหลัง</div>
+    <div id="advisor-status" class="status">กำลังโหลด…</div>
+    <div id="advisor-summary" class="summary-row hidden"></div>
+    <div id="advisor-table-wrap"></div>
+    <div id="advisor-detail" class="section hidden">
+      <h3>GPA รายเทอม — <span id="detail-name"></span></h3>
+      <div id="term-chart"></div>
+    </div>
+  </section>
+
+  <!-- ===================== TAB: DEV ===================== -->
+  <section id="tab-dev" class="tabpage">
+    <h2 class="page-title">🛠️ Dev Panel</h2>
+    <div class="sub">เครื่องมือสำหรับผู้พัฒนา (เห็นเฉพาะ role = dev)</div>
+    <div class="section">
+      <h3>ดูมุมมองเป็น (preview role)</h3>
+      <div class="row" id="viewas-btns">
+        <button class="btn ghost" type="button" data-view="student">🎓 นักศึกษา</button>
+        <button class="btn ghost" type="button" data-view="advisor">👨‍🏫 อาจารย์</button>
+        <button class="btn ghost" type="button" data-view="dev">🛠️ Dev (เห็นทั้งหมด)</button>
+      </div>
+      <div class="meta" style="margin-top:10px">* สลับการมองเห็นแท็บเพื่อทดสอบ UI ของแต่ละ role — ไม่เปลี่ยนบัญชี/สิทธิ์จริง (API ยังใช้สิทธิ์ dev)</div>
+    </div>
+    <div class="section">
+      <h3>ข้อมูลระบบ</h3>
+      <div id="dev-sysinfo" class="status">กำลังโหลด…</div>
+    </div>
+  </section>
+</main>
+
+<script>
+// ---------- shared helpers ----------
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// เล็กๆ: แปลง markdown จากคำตอบ LLM -> HTML สวยๆ (escape ก่อนกัน XSS)
+function renderMarkdown(md) {
+  const inline = (s) => escapeHtml(s)
+    .replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_]+?)__/g, '<strong>$1</strong>')
+    .replace(/`([^`]+?)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  const lines = String(md).replace(/\r\n/g, '\n').split('\n');
+  let html = '', list = null, para = [];
+  const flushPara = () => { if (para.length) { html += `<p>${para.join('<br>')}</p>`; para = []; } };
+  const closeList = () => { if (list) { html += `</${list}>`; list = null; } };
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, '');
+    let m;
+    if (!line.trim()) { flushPara(); closeList(); continue; }
+    if ((m = line.match(/^\s{0,3}(#{1,4})\s+(.*)$/))) {
+      flushPara(); closeList();
+      const lvl = Math.min(m[1].length + 2, 6);
+      html += `<h${lvl} class="md-h">${inline(m[2])}</h${lvl}>`; continue;
+    }
+    if ((m = line.match(/^\s*(?:[-*•]|–)\s+(.*)$/))) {
+      flushPara(); if (list !== 'ul') { closeList(); list = 'ul'; html += '<ul>'; }
+      html += `<li>${inline(m[1])}</li>`; continue;
+    }
+    if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) {
+      flushPara(); if (list !== 'ol') { closeList(); list = 'ol'; html += '<ol>'; }
+      html += `<li>${inline(m[1])}</li>`; continue;
+    }
+    closeList(); para.push(inline(line.trim()));
+  }
+  flushPara(); closeList();
+  return html || '<p></p>';
+}
+function renderTable(columns, rows) {
+  if (!columns || columns.length === 0) return '<em>(ไม่มีผลลัพธ์)</em>';
+  let html = '<div style="overflow-x:auto"><table><thead><tr>';
+  for (const c of columns) html += `<th>${escapeHtml(c)}</th>`;
+  html += '</tr></thead><tbody>';
+  for (const row of rows) {
+    html += '<tr>';
+    for (const c of columns) {
+      const v = row[c];
+      html += `<td>${v === null || v === undefined ? '' : escapeHtml(v)}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table></div>';
+  if (rows.length === 0) html += '<div style="margin-top:6px;color:#777;">(ไม่มีแถวผลลัพธ์)</div>';
+  return html;
+}
+
+// ---------- Google auth (header login state) ----------
+let REAL_ROLE = 'student';
+function applyRole(role) {
+  REAL_ROLE = role;
+  // แท็บ Dev เห็นเฉพาะผู้พัฒนา
+  const devTab = document.querySelector('nav.tabs button[data-tab="dev"]');
+  if (devTab) devTab.style.display = (role === 'dev') ? '' : 'none';
+  // ตั้งมุมมองเริ่มต้นตาม role จริง (dev เห็นทั้งหมด)
+  setViewAs(role === 'dev' ? 'dev' : role);
+}
+// สลับการมองเห็นแท็บให้เหมือน role ที่เลือก (ใช้ preview บนหน้า Dev)
+function setViewAs(view) {
+  const advTab = document.querySelector('nav.tabs button[data-tab="advisor"]');
+  const showAdv = (view === 'advisor' || view === 'dev');
+  if (advTab) advTab.style.display = showAdv ? '' : 'none';
+  document.querySelectorAll('#viewas-btns [data-view]').forEach(b => {
+    const on = b.dataset.view === view;
+    b.classList.toggle('orange', on);
+    b.classList.toggle('ghost', !on);
+  });
+  // ถ้าแท็บที่เปิดอยู่ถูกซ่อน ให้กลับไปแท็บแชท
+  const active = document.querySelector('nav.tabs button.active');
+  if (active && active.style.display === 'none') {
+    document.querySelector('nav.tabs button[data-tab="chat"]').click();
+  }
+}
+document.querySelectorAll('#viewas-btns [data-view]').forEach(b => {
+  b.addEventListener('click', () => setViewAs(b.dataset.view));
+});
+
+let devLoaded = false;
+async function loadDevInfo() {
+  const el = document.getElementById('dev-sysinfo');
+  try {
+    const d = await (await fetch('/dev-info')).json();
+    if (d.error) { el.textContent = 'โหลดไม่ได้: ' + d.error; return; }
+    let html = '<div style="overflow-x:auto"><table><tbody>';
+    html += `<tr><td><b>บัญชี</b></td><td>${escapeHtml(d.user.email || '')} · <b>${escapeHtml(d.user.role)}</b></td></tr>`;
+    html += `<tr><td><b>LLM model</b></td><td>${escapeHtml(d.model)}</td></tr>`;
+    html += `<tr><td><b>provider</b></td><td>${escapeHtml(d.provider)}</td></tr>`;
+    html += `<tr><td><b>DB</b></td><td>${escapeHtml(d.db_path)}</td></tr>`;
+    html += '</tbody></table></div>';
+    html += '<div class="det-label" style="margin-top:14px">ตารางในฐานข้อมูล (จำนวนแถว)</div><div style="overflow-x:auto"><table><tbody>';
+    for (const [t, c] of Object.entries(d.db_counts)) html += `<tr><td>${escapeHtml(t)}</td><td>${escapeHtml(c)}</td></tr>`;
+    html += '</tbody></table></div>';
+    html += `<details class="msg-details" style="margin-top:14px"><summary>Domain digest (ที่ ground โหมดแชท)</summary><pre>${escapeHtml(d.digest || '')}</pre></details>`;
+    el.className = '';
+    el.innerHTML = html;
+  } catch (e) {
+    el.className = '';
+    el.textContent = 'เชื่อมต่อไม่ได้: ' + e;
+  }
+}
+async function loadAuth() {
+  const el = document.getElementById('auth-area');
+  try {
+    const resp = await fetch('/auth/me');
+    const data = await resp.json();
+    if (data.user) {
+      const role = data.user.role;
+      const badge = role === 'advisor'
+        ? '<span class="role-badge advisor">👨‍🏫 อาจารย์</span>'
+        : role === 'dev'
+        ? '<span class="role-badge dev">🛠️ Dev</span>'
+        : '<span class="role-badge student">🎓 นักศึกษา</span>';
+      el.innerHTML = badge +
+        `${data.user.picture ? `<img src="${escapeHtml(data.user.picture)}" alt="" referrerpolicy="no-referrer">` : ''}` +
+        `<span class="uname">${escapeHtml(data.user.name || data.user.email || 'ผู้ใช้')}</span>` +
+        `<button class="auth-btn ghost" id="logout-btn">ออกจากระบบ</button>`;
+      document.getElementById('logout-btn').addEventListener('click', async () => {
+        await fetch('/auth/logout', { method: 'POST' });
+        location.href = '/';   // กลับไปหน้า login
+      });
+      applyRole(role);
+    } else {
+      location.href = '/';     // ไม่ล็อกอิน -> เด้งไปหน้า login
+    }
+  } catch (e) {
+    el.innerHTML = '';
+  }
+}
+loadAuth();
+
+// ---------- tab switching ----------
+const tabButtons = document.querySelectorAll('nav.tabs button');
+let loadedTabs = {};
+tabButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    tabButtons.forEach(b => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('.tabpage').forEach(p => p.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
+    if (tab === 'scholar' && !loadedTabs.scholar) { loadScholarships(); loadedTabs.scholar = true; }
+    if (tab === 'advisor' && !loadedTabs.advisor) { loadDashboard(); loadedTabs.advisor = true; }
+    if (tab === 'dev' && !devLoaded) { loadDevInfo(); devLoaded = true; }
+  });
+});
+
+// ==================== CHAT (conversation thread) ====================
+const questionEl = document.getElementById('question');
+const askBtn = document.getElementById('ask-btn');
+const chatThread = document.getElementById('chat-thread');
+const chatEmpty = document.getElementById('chat-empty');
+
+function scrollThread() {
+  const c = document.querySelector('.composer');
+  (c || chatThread).scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+function addBubble(cls, html) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + cls;
+  div.innerHTML = html;
+  chatThread.appendChild(div);
+  return div;
+}
+function autoGrow() {
+  questionEl.style.height = 'auto';
+  questionEl.style.height = Math.min(questionEl.scrollHeight, 170) + 'px';
+}
+
+async function ask(preset) {
+  const question = (preset != null ? preset : questionEl.value).trim();
+  if (!question) return;
+  if (chatEmpty) chatEmpty.style.display = 'none';
+
+  addBubble('user', escapeHtml(question));
+  questionEl.value = ''; autoGrow();
+  askBtn.disabled = true;
+  const typing = addBubble('assistant', '<div class="typing"><span></span><span></span><span></span></div>');
+  scrollThread();
+
+  try {
+    const resp = await fetch('/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+    });
+    const data = await resp.json();
+    typing.remove();
+
+    if (data.error) {
+      let h = `<b>เกิดข้อผิดพลาด:</b> ${escapeHtml(data.error)}`;
+      if (data.sql) h += `<div class="det-label">SQL ที่ใช้</div><pre>${escapeHtml(data.sql)}</pre>`;
+      addBubble('error', h);
+      return;
+    }
+
+    let h = `<div class="answer-text md">${renderMarkdown(data.answer || '(ไม่มีคำตอบ)')}</div>`;
+    const t = data.timing;
+    if (data.mode === 'chat') {
+      // โหมดสนทนา: AI ตอบเอง ไม่ได้ดึงจากฐานข้อมูล
+      h += `<div class="mode-tag">💬 คำตอบทั่วไปจาก AI (ไม่ได้ดึงจากฐานข้อมูล)</div>`;
+      if (t) h += `<div class="timing-chip">⏱ รวม <b>${t.total}s</b></div>`;
+    } else {
+      // โหมดข้อมูล: ดึงจาก DB จริง — โชว์ SQL + ตาราง
+      h += `<div class="mode-tag data">🗄️ จากฐานข้อมูล</div>`;
+      if (t) h += `<div class="timing-chip">⏱ SQL <b>${t.sql}s</b> · query <b>${t.query}s</b> · answer <b>${t.answer}s</b> · รวม <b>${t.total}s</b></div>`;
+      const nrows = (data.rows || []).length;
+      h += `<details class="msg-details"><summary>ดู SQL & ข้อมูลดิบ${nrows ? ` (${nrows} แถว)` : ''}</summary>` +
+           `<div class="det-label">SQL ที่โมเดลเขียน</div><pre>${escapeHtml(data.sql || '')}</pre>` +
+           `<div class="det-label">ผลลัพธ์จากฐานข้อมูล</div>${renderTable(data.columns, data.rows)}</details>`;
+    }
+    addBubble('assistant', h);
+  } catch (e) {
+    typing.remove();
+    addBubble('error', 'เชื่อมต่อกับ server ไม่ได้: ' + escapeHtml(String(e)));
+  } finally {
+    askBtn.disabled = false;
+    scrollThread();
+  }
+}
+
+askBtn.addEventListener('click', () => ask());
+questionEl.addEventListener('input', autoGrow);
+questionEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); }
+});
+document.querySelectorAll('.ex').forEach(btn => {
+  btn.addEventListener('click', () => ask(btn.textContent));
+});
+
+// ==================== GPA (Phase 2) ====================
+const GRADE_OPTIONS = ["A","B+","B","C+","C","D+","D","F","S","U","T","I","W"];
+let gpaCourses = [];
+
+const parseBtn = document.getElementById('parse-btn');
+const recalcBtn = document.getElementById('recalc-btn');
+const addrowBtn = document.getElementById('addrow-btn');
+const gpaStatus = document.getElementById('gpa-status');
+const gpaError = document.getElementById('gpa-error');
+const gpaResult = document.getElementById('gpa-result');
+
+async function gpaRequest(payload) {
+  gpaError.classList.add('hidden');
+  gpaStatus.classList.remove('hidden');
+  try {
+    const resp = await fetch('/calc-gpa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (data.error) { gpaError.textContent = data.error; gpaError.classList.remove('hidden'); return; }
+    gpaCourses = data.courses || [];
+    renderGpaTable();
+    renderGpaSummary(data);
+    gpaResult.classList.remove('hidden');
+  } catch (e) {
+    gpaError.textContent = 'เชื่อมต่อ server ไม่ได้: ' + e;
+    gpaError.classList.remove('hidden');
+  } finally {
+    gpaStatus.classList.add('hidden');
+  }
+}
+
+function renderGpaTable() {
+  const opts = (sel) => GRADE_OPTIONS.map(g =>
+    `<option${g===sel?' selected':''}>${g}</option>`).join('');
+  let html = '<div style="overflow-x:auto"><table><thead><tr>' +
+    '<th>รหัสวิชา</th><th>ชื่อวิชา</th><th>หน่วยกิต</th><th>เกรด</th><th>ปี</th><th>เทอม</th><th></th>' +
+    '</tr></thead><tbody>';
+  gpaCourses.forEach((c, i) => {
+    html += `<tr>
+      <td><input type="text" data-i="${i}" data-f="code" value="${escapeHtml(c.code||'')}" style="width:92px"></td>
+      <td><input type="text" data-i="${i}" data-f="name" value="${escapeHtml(c.name||'')}" style="width:190px"></td>
+      <td><input type="text" data-i="${i}" data-f="credits" value="${c.credits==null?'':escapeHtml(c.credits)}" style="width:58px"></td>
+      <td><select data-i="${i}" data-f="grade">${opts(c.grade)}</select></td>
+      <td><input type="text" data-i="${i}" data-f="year" value="${c.year==null?'':escapeHtml(c.year)}" style="width:58px"></td>
+      <td><input type="text" data-i="${i}" data-f="semester" value="${c.semester==null?'':escapeHtml(c.semester)}" style="width:48px"></td>
+      <td><button class="btn" style="padding:4px 10px;background:var(--red);box-shadow:none" data-del="${i}">×</button></td>
+    </tr>`;
+  });
+  html += '</tbody></table></div>';
+  const wrap = document.getElementById('gpa-table-wrap');
+  wrap.innerHTML = html;
+  wrap.querySelectorAll('input,select').forEach(el => {
+    el.addEventListener('change', () => {
+      const i = +el.dataset.i, f = el.dataset.f;
+      let v = el.value.trim();
+      if (['credits','year','semester'].includes(f)) v = v === '' ? null : Number(v);
+      gpaCourses[i][f] = v;
+    });
+  });
+  wrap.querySelectorAll('[data-del]').forEach(b => {
+    b.addEventListener('click', () => { gpaCourses.splice(+b.dataset.del,1); renderGpaTable(); });
+  });
+}
+
+function renderGpaSummary(data) {
+  const ov = data.result.overall;
+  const st = data.status;
+  const th = data.thresholds;
+  let html = '';
+  if (data.multicolumn) {
+    html += `<div class="note" style="margin-bottom:12px">📑 ตรวจพบ transcript แบบ <b>2 คอลัมน์</b> (คัดลอกจาก PDF) — ดึงรายวิชาครบและ <b>GPAX รวมถูกต้อง</b> แต่การจัดกลุ่ม GPA <b>รายเทอมอาจสลับ</b> โปรดตรวจ/แก้ในตารางด้านบนถ้าจำเป็น</div>`;
+  }
+  html += `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="font-size:34px;font-weight:800;letter-spacing:-1px;color:var(--navy)">${ov.gpa==null?'—':ov.gpa}</div>
+      <div>
+        <span class="pill ${st.color}">${st.emoji} ${escapeHtml(st.label)}</span>
+        <div class="meta" style="margin-top:6px;color:var(--muted);font-size:13px">GPAX สะสม · นับ ${ov.counted} วิชา · ${ov.gpa_credits} หน่วยกิต (จากทั้งหมด ${ov.total_courses} วิชา)</div>
+      </div>
+    </div>`;
+
+  if (data.result.terms.length) {
+    html += '<div style="overflow-x:auto;margin-top:16px"><table><thead><tr><th>ปี/เทอม</th><th>GPA เทอม</th><th>หน่วยกิต</th></tr></thead><tbody>';
+    for (const t of data.result.terms) {
+      html += `<tr><td>${t.year==null?'—':escapeHtml(t.year)} / ${t.semester==null?'—':escapeHtml(t.semester)}</td>
+        <td><b>${t.gpa==null?'—':t.gpa}</b></td><td>${t.gpa_credits}</td></tr>`;
+    }
+    html += '</tbody></table></div>';
+  }
+
+  if (ov.excluded && ov.excluded.length) {
+    html += '<div class="meta" style="margin-top:14px"><b>วิชาที่ไม่นับใน GPA:</b><ul style="margin:6px 0 0;padding-left:18px;line-height:1.6">';
+    for (const e of ov.excluded) {
+      html += `<li>${escapeHtml(e.code||'')} ${escapeHtml(e.name||'')} — ${escapeHtml(e.grade||'')} (${escapeHtml(e.reason)})</li>`;
+    }
+    html += '</ul></div>';
+  }
+  html += `<div class="meta" style="margin-top:14px;font-size:11.5px">เกณฑ์ (จากตาราง rules): รีไทร์ &lt; ${th.retire} · เฝ้าระวัง &lt; ${th.probation} · เกียรตินิยม ≥ ${th.honors}</div>`;
+  document.getElementById('gpa-summary').innerHTML = html;
+}
+
+parseBtn.addEventListener('click', () => {
+  gpaRequest({ transcript: document.getElementById('transcript').value });
+});
+recalcBtn.addEventListener('click', () => { gpaRequest({ courses: gpaCourses }); });
+addrowBtn.addEventListener('click', () => {
+  gpaCourses.push({ code:'', name:'', credits:null, grade:'A', year:null, semester:null });
+  renderGpaTable();
+  gpaResult.classList.remove('hidden');
+});
+
+// ==================== SCHOLARSHIPS ====================
+async function loadScholarships() {
+  const status = document.getElementById('scholar-status');
+  const wrap = document.getElementById('scholar-cards');
+  try {
+    const resp = await fetch('/scholarships');
+    const data = await resp.json();
+    if (data.error) { status.textContent = 'โหลดไม่สำเร็จ: ' + data.error; return; }
+    status.classList.add('hidden');
+    wrap.innerHTML = (data.scholarships || []).map(s => `
+      <div class="card">
+        <h4>${escapeHtml(s.name)}</h4>
+        <div class="amt">${s.amount ? escapeHtml(s.amount) : '—'}</div>
+        <div class="meta">ผู้ให้ทุน: ${escapeHtml(s.provider || '—')}</div>
+        <div class="meta">เกณฑ์ GPA: ${s.gpa_requirement != null ? escapeHtml(s.gpa_requirement) : 'ไม่ระบุ'}</div>
+        <div class="meta">เงื่อนไข: ${escapeHtml(s.eligibility || '—')}</div>
+        <div class="meta">ปิดรับ: ${escapeHtml(s.deadline || '—')}</div>
+        ${s.url ? `<div class="meta"><a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">ดูรายละเอียด ↗</a></div>` : ''}
+      </div>`).join('') || '<em>ยังไม่มีข้อมูลทุน</em>';
+  } catch (e) {
+    status.textContent = 'เชื่อมต่อ server ไม่ได้: ' + e;
+  }
+}
+
+// ==================== DASHBOARD ====================
+async function loadDashboard() {
+  const status = document.getElementById('advisor-status');
+  status.classList.remove('hidden');
+  status.textContent = 'กำลังโหลด…';
+  try {
+    const resp = await fetch('/dashboard-data');
+    const data = await resp.json();
+    if (data.error) { status.textContent = 'โหลดไม่สำเร็จ: ' + data.error; return; }
+    renderDashboard(data);
+    status.classList.add('hidden');
+  } catch (e) {
+    status.textContent = 'เชื่อมต่อ server ไม่ได้: ' + e;
+  }
+}
+let dashTermGpa = {}, dashStudents = [], dashThresholds = {};
+let dashFilter = 'all', dashProgram = 'all', dashYear = 'all';
+function renderDashboard(data) {
+  dashTermGpa = data.term_gpa || {};
+  dashStudents = data.students || [];
+  dashThresholds = data.thresholds || {};
+  dashFilter = 'all'; dashProgram = 'all'; dashYear = 'all';
+  document.getElementById('advisor-summary').classList.remove('hidden');
+  renderDash();
+}
+
+function renderDash() {
+  const th = dashThresholds;
+  const opt = (v, lb, cur) => `<option value="${v}"${String(v)===String(cur)?' selected':''}>${lb}</option>`;
+  const FILTERS = [['all','ทั้งหมด'],['risk','🔴 เสี่ยงรีไทร์'],['watch','🟠 เฝ้าระวัง'],['normal','⚪ ปกติ']];
+
+  // 1) กรองด้วย หลักสูตร + ปีที่เข้า ก่อน (เป็น "ขอบเขต")
+  const scope = dashStudents.filter(s =>
+    (dashProgram === 'all' || s.program_code === dashProgram) &&
+    (dashYear === 'all' || String(s.admission_year) === String(dashYear)));
+
+  // 2) นับสถานะภายในขอบเขต -> การ์ดสรุป
+  const cnt = { risk: 0, watch: 0, normal: 0 };
+  scope.forEach(s => { cnt[s.risk_status.level] = (cnt[s.risk_status.level] || 0) + 1; });
+  const summaryEl = document.getElementById('advisor-summary');
+  summaryEl.innerHTML = `
+    <div class="stat filter-tile" data-level="all"><div class="num" style="color:var(--navy)">${scope.length}</div><div class="lbl">👥 ทั้งหมด</div></div>
+    <div class="stat filter-tile" data-level="risk"><div class="num" style="color:var(--red)">${cnt.risk}</div><div class="lbl">🔴 เสี่ยงรีไทร์</div></div>
+    <div class="stat filter-tile" data-level="watch"><div class="num" style="color:var(--orange-dark)">${cnt.watch}</div><div class="lbl">🟠 เฝ้าระวัง</div></div>
+    <div class="stat filter-tile" data-level="normal"><div class="num" style="color:var(--muted)">${cnt.normal}</div><div class="lbl">⚪ ปกติ</div></div>`;
+  summaryEl.querySelectorAll('.filter-tile').forEach(t => {
+    t.classList.toggle('active', t.dataset.level === dashFilter);
+    t.addEventListener('click', () => { dashFilter = t.dataset.level; renderDash(); });
+  });
+
+  // ตัวเลือก dropdown (จากข้อมูลทั้งหมด)
+  const programs = [...new Set(dashStudents.map(s => s.program_code).filter(Boolean))].sort();
+  const years = [...new Set(dashStudents.map(s => s.admission_year).filter(v => v != null))].sort((a,b) => b - a);
+
+  // 3) แถว = ขอบเขต กรองด้วยสถานะ
+  const rows = scope.filter(s => dashFilter === 'all' || s.risk_status.level === dashFilter);
+
+  let html = '<div class="section"><h3>นักศึกษาในความดูแล (คลิกแถวเพื่อดู GPA รายเทอม)</h3>';
+  html += '<div class="row" style="margin-top:0;margin-bottom:12px;gap:14px">' +
+    `<label class="flt-label">หลักสูตร <select id="flt-program">${opt('all','ทุกหลักสูตร',dashProgram)}${programs.map(p=>opt(p,p,dashProgram)).join('')}</select></label>` +
+    `<label class="flt-label">ปีที่เข้า <select id="flt-year">${opt('all','ทุกปี',dashYear)}${years.map(y=>opt(y,y,dashYear)).join('')}</select></label>` +
+    '</div>';
+  html += '<div class="row" id="dash-filters" style="margin-top:0;margin-bottom:12px">' +
+    FILTERS.map(([lv, lb]) => `<button type="button" class="btn ${dashFilter===lv?'orange':'ghost'}" data-flt="${lv}">${lb}</button>`).join('') +
+    '</div>';
+  html += '<div style="overflow-x:auto"><table><thead><tr>' +
+    '<th>รหัส</th><th>ชื่อ</th><th>หลักสูตร</th><th>สาย</th><th>ปีที่เข้า</th><th>GPAX</th><th>หน่วยกิต</th><th>สถานะ</th></tr></thead><tbody>';
+  if (!rows.length) {
+    html += '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:18px">— ไม่มีนักศึกษาตามเงื่อนไขนี้ —</td></tr>';
+  }
+  for (const st of rows) {
+    const rs = st.risk_status;
+    const hasTerm = dashTermGpa[st.student_id] && dashTermGpa[st.student_id].length;
+    html += `<tr class="${hasTerm?'clickable':''}" data-sid="${st.student_id}" data-name="${escapeHtml(st.name)}">
+      <td>${escapeHtml(st.student_id)}</td>
+      <td>${escapeHtml(st.name)}</td>
+      <td>${escapeHtml(st.program_code||'')}</td>
+      <td>${escapeHtml(st.module||'—')}</td>
+      <td>${st.admission_year==null?'—':escapeHtml(st.admission_year)}</td>
+      <td><b>${st.gpax==null?'—':st.gpax}</b></td>
+      <td>${st.credits_earned==null?'—':escapeHtml(st.credits_earned)}</td>
+      <td><span class="pill ${rs.color}">${rs.emoji} ${escapeHtml(rs.label)}</span></td>
+    </tr>`;
+  }
+  html += '</tbody></table></div>';
+  html += `<div class="meta" style="margin-top:10px;font-size:11.5px">เกณฑ์ (จากตาราง rules): 🔴 เสี่ยงรีไทร์ GPAX &lt; ${th.retire} · 🟠 เฝ้าระวัง &lt; ${th.probation} · ⚪ นอกนั้น = ปกติ</div></div>`;
+  document.getElementById('advisor-table-wrap').innerHTML = html;
+
+  document.getElementById('flt-program').addEventListener('change', e => { dashProgram = e.target.value; renderDash(); });
+  document.getElementById('flt-year').addEventListener('change', e => { dashYear = e.target.value; renderDash(); });
+  document.querySelectorAll('#dash-filters [data-flt]').forEach(b =>
+    b.addEventListener('click', () => { dashFilter = b.dataset.flt; renderDash(); }));
+  document.querySelectorAll('#advisor-table-wrap tr.clickable').forEach(tr =>
+    tr.addEventListener('click', () => showTermChart(tr.dataset.sid, tr.dataset.name)));
+}
+
+function showTermChart(sid, name) {
+  const terms = dashTermGpa[sid] || [];
+  const detail = document.getElementById('advisor-detail');
+  document.getElementById('detail-name').textContent = name;
+  if (!terms.length) { detail.classList.add('hidden'); return; }
+
+  const W = 560, H = 220, padL = 34, padB = 26, padT = 12, padR = 12;
+  const n = terms.length;
+  const x = i => padL + (n===1?0:i*(W-padL-padR)/(n-1));
+  const y = g => padT + (4-g)/4*(H-padT-padB);
+  let grid = '';
+  for (let g=0; g<=4; g++) {
+    grid += `<line x1="${padL}" y1="${y(g)}" x2="${W-padR}" y2="${y(g)}" stroke="#e7ebf1"/>
+             <text x="${padL-6}" y="${y(g)+4}" text-anchor="end" font-size="10" fill="#6b7688">${g}</text>`;
+  }
+  let path = '', area = '', dots = '';
+  terms.forEach((t,i) => {
+    path += (i===0?'M':'L') + x(i) + ',' + y(t.gpa) + ' ';
+    dots += `<circle cx="${x(i)}" cy="${y(t.gpa)}" r="4" fill="#15457A"/>
+             <text x="${x(i)}" y="${y(t.gpa)-9}" text-anchor="middle" font-size="10" font-weight="700" fill="#15457A">${t.gpa}</text>
+             <text x="${x(i)}" y="${H-8}" text-anchor="middle" font-size="10" fill="#6b7688">ปี${t.year}/${t.semester}</text>`;
+  });
+  area = `M${x(0)},${y(0)} ` + terms.map((t,i)=>`L${x(i)},${y(t.gpa)}`).join(' ') + ` L${x(n-1)},${y(0)} Z`;
+  document.getElementById('term-chart').innerHTML =
+    `<div style="overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px">
+      <defs><linearGradient id="ga" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#E8762C" stop-opacity=".22"/><stop offset="1" stop-color="#E8762C" stop-opacity="0"/>
+      </linearGradient></defs>
+      ${grid}<path d="${area}" fill="url(#ga)"/><path d="${path}" fill="none" stroke="#E8762C" stroke-width="2.5" stroke-linejoin="round"/>${dots}
+    </svg></div>`;
+  detail.classList.remove('hidden');
+  detail.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+</script>
+</body>
+</html>

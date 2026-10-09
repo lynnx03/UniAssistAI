@@ -1,452 +1,347 @@
 """
-Extract curriculum data from PDFs using DeepSeek API.
-Outputs JSON files per program: IT, BIT, DSBA, AIT.
-- Uses json_repair for truncated responses
-- Merges results in Python (no DeepSeek merge step)
-- Caches per-file results to avoid re-processing
+google_auth.py
+--------------
+Google OAuth 2.0 (Sign in with Google) สำหรับ UniAssist (Flask)
+พอร์ตมาจากสตาร์ตเตอร์ FastAPI/React -> ปรับให้เข้ากับ Flask + server-side session
+(สะอาดกว่าแบบส่ง JWT ผ่าน URL: เก็บ user ไว้ใน session cookie ที่เซ็นแล้ว)
+
+ต้องตั้งค่าใน .env (อ่านจากฝั่ง server เท่านั้น — ห้ามส่ง secret ไป frontend):
+    GOOGLE_CLIENT_ID=...
+    GOOGLE_CLIENT_SECRET=...
+    GOOGLE_REDIRECT_URI=http://localhost:5000/auth/callback
+    FLASK_SECRET_KEY=<สุ่มยาวๆ>        # ใช้เซ็น session cookie
+
+Endpoints (register ผ่าน register_auth(app)):
+    GET  /auth/login     -> เด้งไปหน้ายินยอมของ Google
+    GET  /auth/callback  -> แลก code -> token -> โปรไฟล์ -> เก็บลง session -> กลับหน้าแรก
+    POST /auth/logout    -> ล้าง session
+    GET  /auth/me        -> คืนข้อมูล user ที่ล็อกอินอยู่ (หรือ null)
+
+ใช้ urllib (stdlib) เรียก Google — ไม่ต้องลง dependency เพิ่ม
 """
 
-import os
 import json
+import os
 import re
-import pdfplumber
-from openai import OpenAI
-from json_repair import repair_json
+import secrets
+import urllib.parse
+import urllib.request
+from functools import wraps
 
-# ─── Configuration ────────────────────────────────────────────────────────────
+from flask import jsonify, redirect, request, session
+from markupsafe import escape
 
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
-DATA_DIR = "/Users/nms/Desktop/AI_ASSIST DS/data"
-OUTPUT_DIR = "/Users/nms/Desktop/AI_ASSIST DS/output"
-MODEL = "deepseek-chat"
-MAX_CHARS_PER_CHUNK = 55_000  # conservative to leave room for output tokens
+_GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+_GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+_GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
-PROGRAMS = {
-    "IT": ["IT-1.pdf", "IT-2.pdf", "IT-3.pdf", "แผน_IT.pdf"],
-    "BIT": ["BIT-1.pdf", "BIT-2.pdf", "BIT-3.pdf", "แผน_BIT.pdf"],
-    "DSBA": [
-        "DSBA-1.pdf", "DSBA-2-1.pdf", "DSBA-2-2.pdf",
-        "DSBA-2-3-1.pdf", "DSBA-2-3-2.pdf", "DSBA-2-4.pdf",
-        "DSBA-2-5.pdf", "DSBA-3.pdf", "แผน_DSBA.pdf",
-    ],
-    "AIT": ["AIT_1.pdf", "AIT_2.pdf", "AIT_3.pdf", "AIT_4.pdf", "แผน_AIT.pdf"],
-}
-
-# ─── Prompts ──────────────────────────────────────────────────────────────────
-
-SYSTEM_PROMPT = """คุณเป็นผู้เชี่ยวชาญด้านการวิเคราะห์เอกสารหลักสูตรมหาวิทยาลัยไทย (มคอ.2)
-งานของคุณคือ extract ข้อมูลจากเอกสารหลักสูตรและส่งคืนเป็น JSON ที่มีโครงสร้างชัดเจน
-ตอบเฉพาะ JSON เท่านั้น ไม่มีข้อความอื่น ไม่มี markdown code block
-สำคัญ: ตอบให้ครบ อย่าตัดข้อความกลางคัน"""
-
-EXTRACTION_PROMPT = """จากเนื้อหาเอกสารหลักสูตรต่อไปนี้ ให้ extract ข้อมูลทั้งหมดที่มีและส่งคืนเป็น JSON ที่สมบูรณ์
-
-Schema:
-{{
-  "program_info": {{
-    "name_th": "ชื่อหลักสูตรภาษาไทย",
-    "name_en": "ชื่อหลักสูตรภาษาอังกฤษ",
-    "degree_th": "ชื่อปริญญาภาษาไทย",
-    "degree_en": "ชื่อปริญญาภาษาอังกฤษ",
-    "major_th": "สาขาวิชาภาษาไทย",
-    "major_en": "สาขาวิชาภาษาอังกฤษ",
-    "total_credits": 0,
-    "program_type": "ปริญญาตรี/โท/เอก",
-    "duration_years": 0,
-    "curriculum_year": "พ.ศ.",
-    "institution": "ชื่อสถาบัน",
-    "faculty": "ชื่อคณะ"
-  }},
-  "curriculum_structure": {{
-    "general_education": {{ "credits": 0, "subcategories": [] }},
-    "specific_courses": {{ "credits": 0, "subcategories": [] }},
-    "elective_courses": {{ "credits": 0, "description": "" }},
-    "free_electives": {{ "credits": 0, "description": "" }}
-  }},
-  "courses": [
-    {{
-      "code": "รหัสวิชา",
-      "name_th": "ชื่อวิชาไทย",
-      "name_en": "ชื่อวิชาอังกฤษ",
-      "credits": "เช่น 3(3-0-6)",
-      "category": "หมวดหมู่",
-      "type": "บังคับ/เลือก",
-      "year": 0,
-      "semester": 0
-    }}
-  ],
-  "academic_plan": [
-    {{
-      "year": 1,
-      "semester": 1,
-      "plan_type": "ปกติ/สหกิจ",
-      "courses": [{{"code": "", "name_th": "", "credits": ""}}],
-      "total_credits": 0
-    }}
-  ],
-  "graduation_requirements": {{
-    "minimum_credits": 0,
-    "minimum_gpa": 0.0,
-    "specific_requirements": [],
-    "other_conditions": []
-  }},
-  "dismissal_criteria": {{
-    "academic_dismissal": [],
-    "other_criteria": []
-  }},
-  "rules_and_regulations": {{
-    "enrollment_rules": [],
-    "examination_rules": [],
-    "grade_rules": [],
-    "other_rules": []
-  }},
-  "career_opportunities": [],
-  "program_outcomes": [],
-  "special_tracks": []
-}}
-
-ถ้าข้อมูลไม่มีใน document ให้ใส่ null หรือ [] หรือ {{}}
-รักษาข้อมูลภาษาไทยให้ครบถ้วน ตอบ JSON ที่สมบูรณ์เท่านั้น
-
-เนื้อหาเอกสาร:
-{text}"""
-
-# ─── Helpers ──────────────────────────────────────────────────────────────────
-
-def extract_text_from_pdf(pdf_path: str) -> str:
-    texts = []
-    with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            text = page.extract_text()
-            if text:
-                texts.append(text)
-    return "\n".join(texts)
+# โดเมนที่อนุญาตให้ล็อกอิน (ด่านกันโดเมนฝั่ง server) — ตั้งใน .env ได้ถ้าต้องการเปลี่ยน
+ALLOWED_DOMAIN = os.environ.get("ALLOWED_DOMAIN", "kmitl.ac.th").strip().lower()
 
 
-def chunk_text(text: str, max_chars: int = MAX_CHARS_PER_CHUNK) -> list[str]:
-    if len(text) <= max_chars:
-        return [text]
-    chunks = []
-    paragraphs = text.split("\n")
-    current_chunk, current_len = [], 0
-    for para in paragraphs:
-        para_len = len(para) + 1
-        if current_len + para_len > max_chars and current_chunk:
-            chunks.append("\n".join(current_chunk))
-            current_chunk, current_len = [para], para_len
-        else:
-            current_chunk.append(para)
-            current_len += para_len
-    if current_chunk:
-        chunks.append("\n".join(current_chunk))
-    return chunks
+def _auth_page(title, message_html, status=200, show_login=True, tone="info"):
+    """หน้า auth (login/error) สไตล์มินิมอลให้เข้าธีมเว็บ UniAssist (KMITL)
+    message_html = HTML ที่ปลอดภัยแล้ว (ผู้เรียกต้อง escape ค่าจากผู้ใช้เอง)"""
+    accent = "#e0483d" if tone == "error" else "var(--navy)"
+    btn = ("<a class='btn' href='/auth/login'>🔑 เข้าสู่ระบบด้วยบัญชี KMITL</a>"
+           if show_login else "")
+    home = "<a class='home' href='/'>← กลับหน้าแรก</a>" if show_login else ""
+    html = f"""<!doctype html>
+<html lang="th"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{escape(title)} — UniAssist</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{{--navy:#15457A;--navy-600:#1b5698;--orange:#E8762C;--orange-600:#d3641c;--ink:#1b2430;--muted:#6b7688;--border:#e7ebf1;}}
+  *{{box-sizing:border-box;}}
+  body{{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+    font-family:"IBM Plex Sans Thai","Segoe UI",Tahoma,sans-serif;color:var(--ink);
+    background:radial-gradient(1100px 380px at 100% -8%,#eaf1fb,transparent 60%),
+      radial-gradient(900px 340px at -10% 0%,#fdeede,transparent 55%),#f5f7fb;
+    -webkit-font-smoothing:antialiased;}}
+  .card{{background:#fff;border:1px solid var(--border);border-radius:22px;
+    box-shadow:0 12px 40px rgba(16,24,40,.13);max-width:430px;width:100%;padding:36px 32px;text-align:center;}}
+  .logo{{width:56px;height:56px;border-radius:16px;margin:0 auto 20px;
+    background:linear-gradient(135deg,{accent},var(--navy-600));color:#fff;display:flex;
+    align-items:center;justify-content:center;font-weight:700;font-size:27px;box-shadow:0 6px 18px rgba(21,69,122,.28);}}
+  h1{{font-size:21px;font-weight:700;margin:0 0 12px;letter-spacing:-.2px;}}
+  .msg{{color:var(--muted);font-size:14.5px;line-height:1.65;margin:0 0 24px;}}
+  .msg b{{color:var(--ink);font-weight:600;}}
+  .msg code{{background:rgba(21,69,122,.08);padding:2px 7px;border-radius:6px;font-size:13px;
+    font-family:"SF Mono",Consolas,monospace;word-break:break-all;}}
+  .btn{{display:inline-block;background:linear-gradient(135deg,var(--orange),var(--orange-600));color:#fff;
+    padding:12px 24px;border-radius:13px;text-decoration:none;font-weight:600;font-size:14.5px;
+    box-shadow:0 5px 16px rgba(232,118,44,.32);transition:filter .12s,transform .12s;}}
+  .btn:hover{{filter:brightness(1.05);transform:translateY(-1px);}}
+  .home{{display:block;margin-top:16px;color:var(--navy);font-size:13px;text-decoration:none;}}
+  .home:hover{{text-decoration:underline;}}
+</style></head>
+<body><div class="card">
+  <div class="logo">U</div>
+  <h1>{escape(title)}</h1>
+  <div class="msg">{message_html}</div>
+  {btn}{home}
+</div></body></html>"""
+    return html, status
 
 
-def call_deepseek(client: OpenAI, system: str, user: str) -> str:
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        temperature=0.1,
-        max_tokens=8192,
-    )
-    return response.choices[0].message.content.strip()
+def _cfg(name, default=None):
+    return os.environ.get(name, default)
 
 
-def parse_json_response(text: str) -> dict:
-    """Parse JSON with automatic repair for truncated responses."""
-    # Strip markdown fences
-    text = re.sub(r"```json\s*", "", text)
-    text = re.sub(r"```\s*", "", text)
-    text = text.strip()
+def _redirect_uri():
+    # ค่าเริ่มต้นชี้ callback ของ Flask เอง (ต้องตรงกับที่ตั้งใน Google Cloud Console เป๊ะ)
+    return _cfg("GOOGLE_REDIRECT_URI", "http://localhost:5000/auth/callback")
 
-    # Try direct parse first
+
+def _post_form(url, data):
+    body = urllib.parse.urlencode(data).encode()
+    req = urllib.request.Request(url, data=body, method="POST",
+                                 headers={"Content-Type": "application/x-www-form-urlencoded"})
     try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        # Google ส่งรายละเอียด error มาใน body (เช่น invalid_grant) -> อ่านมาคืนให้เห็นสาเหตุจริง
+        try:
+            return json.loads(e.read().decode())
+        except Exception:
+            return {"error": f"http_{e.code}", "error_description": str(e)}
 
-    # Use json_repair to fix truncated/malformed JSON
+
+def _get_json(url, bearer):
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {bearer}"})
     try:
-        repaired = repair_json(text, return_objects=True)
-        if isinstance(repaired, dict) and repaired:
-            print(f"    [INFO] JSON repaired successfully")
-            return repaired
-    except Exception:
-        pass
-
-    print(f"    [WARN] Could not parse JSON, returning empty dict")
-    return {}
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read().decode())
+        except Exception:
+            return {"error": f"http_{e.code}", "error_description": str(e)}
 
 
-# ─── Python-based merge (no API calls needed) ─────────────────────────────────
-
-def merge_list_dedup(lists: list[list], key: str) -> list:
-    """Merge multiple lists, deduplicating by a key field."""
-    seen = {}
-    for lst in lists:
-        for item in lst:
-            if isinstance(item, dict):
-                k = item.get(key, "")
-                if k and k not in seen:
-                    seen[k] = item
-                elif not k:
-                    seen[id(item)] = item  # keep items without key
-    return list(seen.values())
+def _email_set(env_name: str) -> set:
+    return {e.strip().lower() for e in os.environ.get(env_name, "").split(",") if e.strip()}
 
 
-def merge_list_unique(lists: list[list]) -> list:
-    """Merge lists of strings, removing duplicates."""
-    seen = set()
-    result = []
-    for lst in lists:
-        for item in lst:
-            s = str(item)
-            if s not in seen:
-                seen.add(s)
-                result.append(item)
-    return result
+def _allowed_domains() -> set:
+    raw = os.environ.get("ALLOWED_DOMAINS", "kmitl.ac.th")
+    return {d.strip().lower().lstrip("@") for d in raw.split(",") if d.strip()}
 
 
-def pick_best(values: list, prefer_non_empty=True):
-    """Pick the best non-null, non-empty value from a list."""
-    for v in values:
-        if v is None:
-            continue
-        if prefer_non_empty and v in ("", 0, [], {}):
-            continue
-        return v
-    return values[0] if values else None
+def is_allowed_email(email: str) -> bool:
+    """อนุญาตเฉพาะอีเมลในโดเมนที่กำหนด (ค่าเริ่มต้น: kmitl.ac.th)
+    ยกเว้นอีเมลที่ถูกระบุ role ไว้ชัดใน DEV/ADVISOR/STUDENT_EMAILS (whitelist รายคน)
+    -> กันอีเมลนอกสถาบัน เช่น @gmail.com เข้าระบบ"""
+    email = (email or "").strip().lower()
+    if not email or "@" not in email:
+        return False
+    if email in (_email_set("DEV_EMAILS") | _email_set("ADVISOR_EMAILS") | _email_set("STUDENT_EMAILS")):
+        return True
+    return email.rsplit("@", 1)[-1] in _allowed_domains()
 
 
-def merge_program_info(infos: list[dict]) -> dict:
-    infos = [i for i in infos if i]
-    if not infos:
-        return {}
-    result = {}
-    for field in ["name_th", "name_en", "degree_th", "degree_en", "major_th", "major_en",
-                  "total_credits", "program_type", "duration_years", "curriculum_year",
-                  "institution", "faculty"]:
-        values = [i.get(field) for i in infos if i.get(field)]
-        result[field] = values[0] if values else None
-    return result
+def classify_role(email: str) -> str:
+    """แยกบทบาทจากอีเมล: 'dev' | 'advisor' | 'student'
+    ลำดับความสำคัญ: DEV_EMAILS > ADVISOR_EMAILS > STUDENT_EMAILS > heuristic > default
+    กติกา (KMITL):
+      - DEV_EMAILS (คนพัฒนา) -> dev (เห็นทุกอย่าง + หน้า Dev)
+      - ADVISOR_EMAILS (allowlist) -> advisor   (advisor มาจาก allowlist นี้เท่านั้น)
+      - STUDENT_EMAILS (allowlist) -> student
+      - อีเมลนักศึกษา = รหัสนักศึกษา (ตัวเลขล้วน) เช่น 66070104@kmitl.ac.th -> student
+      - อื่นๆ ทั้งหมด -> student   (default ปลอดภัย ไม่เดา advisor จากรูปอีเมลอีกต่อไป)"""
+    email = (email or "").strip().lower()
+    local = email.split("@")[0]
+    if email in _email_set("DEV_EMAILS"):
+        return "dev"
+    if email in _email_set("ADVISOR_EMAILS"):
+        return "advisor"
+    if email in _email_set("STUDENT_EMAILS"):
+        return "student"
+    if re.fullmatch(r"\d{6,}", local):   # local-part เป็นตัวเลขล้วน = รหัสนักศึกษา
+        return "student"
+    return "student"
 
 
-def merge_curriculum_structure(structs: list[dict]) -> dict:
-    structs = [s for s in structs if s]
-    if not structs:
-        return {}
-    result = {}
-    for key in ["general_education", "specific_courses", "elective_courses", "free_electives"]:
-        candidates = [s.get(key) for s in structs if s.get(key)]
-        if candidates:
-            best = max(candidates, key=lambda x: len(str(x)))
-            result[key] = best
-        else:
-            result[key] = {}
-    return result
+def current_user():
+    """คืน dict ของ user ที่ล็อกอินอยู่ หรือ None"""
+    return session.get("user")
 
 
-def merge_graduation_requirements(reqs: list[dict]) -> dict:
-    reqs = [r for r in reqs if r]
-    if not reqs:
-        return {}
-    credits = [r.get("minimum_credits") for r in reqs if r.get("minimum_credits")]
-    gpa = [r.get("minimum_gpa") for r in reqs if r.get("minimum_gpa")]
-    specific = merge_list_unique([r.get("specific_requirements", []) for r in reqs])
-    other = merge_list_unique([r.get("other_conditions", []) for r in reqs])
-    return {
-        "minimum_credits": credits[0] if credits else None,
-        "minimum_gpa": gpa[0] if gpa else None,
-        "specific_requirements": specific,
-        "other_conditions": other,
-    }
+def advisor_required(view):
+    """เดคอเรเตอร์กันเส้นทางเฉพาะอาจารย์ที่ปรึกษา (dev เข้าได้ด้วย)"""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        u = current_user()
+        if not u:
+            return jsonify({"error": "ต้องเข้าสู่ระบบก่อน"}), 401
+        if u.get("role") not in ("advisor", "dev"):
+            return jsonify({"error": "เฉพาะอาจารย์ที่ปรึกษาเท่านั้น"}), 403
+        return view(*args, **kwargs)
+    return wrapped
 
 
-def merge_dismissal_criteria(crits: list[dict]) -> dict:
-    crits = [c for c in crits if c]
-    if not crits:
-        return {}
-    return {
-        "academic_dismissal": merge_list_unique([c.get("academic_dismissal", []) for c in crits]),
-        "other_criteria": merge_list_unique([c.get("other_criteria", []) for c in crits]),
-    }
+def dev_required(view):
+    """เดคอเรเตอร์กันเส้นทางเฉพาะผู้พัฒนา (role = dev)"""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        u = current_user()
+        if not u:
+            return jsonify({"error": "ต้องเข้าสู่ระบบก่อน"}), 401
+        if u.get("role") != "dev":
+            return jsonify({"error": "เฉพาะผู้พัฒนาเท่านั้น"}), 403
+        return view(*args, **kwargs)
+    return wrapped
 
 
-def merge_rules(rules_list: list[dict]) -> dict:
-    rules_list = [r for r in rules_list if r]
-    if not rules_list:
-        return {}
-    return {
-        "enrollment_rules": merge_list_unique([r.get("enrollment_rules", []) for r in rules_list]),
-        "examination_rules": merge_list_unique([r.get("examination_rules", []) for r in rules_list]),
-        "grade_rules": merge_list_unique([r.get("grade_rules", []) for r in rules_list]),
-        "other_rules": merge_list_unique([r.get("other_rules", []) for r in rules_list]),
-    }
+def login_required(view):
+    """เดคอเรเตอร์กันเส้นทางที่ต้องล็อกอินก่อน (ยังไม่ได้บังคับใช้กับหน้าไหนเป็นค่าเริ่มต้น
+    — เผื่ออยาก gate เช่น dashboard อาจารย์ ให้เติม @login_required ได้)"""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not current_user():
+            return jsonify({"error": "ต้องเข้าสู่ระบบก่อน"}), 401
+        return view(*args, **kwargs)
+    return wrapped
 
 
-def merge_academic_plan(plans: list[list]) -> list:
-    """Merge academic plans, grouping by year+semester+plan_type."""
-    combined = {}
-    for plan_list in plans:
-        for entry in plan_list:
-            if not isinstance(entry, dict):
-                continue
-            key = (entry.get("year"), entry.get("semester"), entry.get("plan_type", "ปกติ"))
-            if key not in combined:
-                combined[key] = entry.copy()
-                combined[key]["courses"] = list(entry.get("courses", []))
-            else:
-                # Merge courses for same year/semester
-                existing_codes = {c.get("code") for c in combined[key]["courses"] if isinstance(c, dict)}
-                for course in entry.get("courses", []):
-                    if isinstance(course, dict) and course.get("code") not in existing_codes:
-                        combined[key]["courses"].append(course)
-                        existing_codes.add(course.get("code"))
-    return sorted(combined.values(), key=lambda x: (x.get("year", 0) or 0, x.get("semester", 0) or 0))
+def register_auth(app):
+    """ผูก session secret + endpoints /auth/* เข้ากับ Flask app"""
+    # secret key สำหรับเซ็น session cookie (ต้องตั้งใน .env ตอน production)
+    app.secret_key = _cfg("FLASK_SECRET_KEY") or "dev-only-insecure-change-me"
 
+    @app.route("/auth/login")
+    def auth_login():
+        client_id = _cfg("GOOGLE_CLIENT_ID")
+        if not client_id:
+            return _auth_page(
+                "ยังไม่ได้ตั้งค่า Google Login",
+                "ยังไม่ได้ตั้งค่า <code>GOOGLE_CLIENT_ID</code> / <code>GOOGLE_CLIENT_SECRET</code> ใน .env<br>"
+                "ดูวิธีขอจาก Google Cloud Console ใน <b>GOOGLE_AUTH_SETUP.md</b>",
+                500, show_login=False, tone="error")
+        # state กัน CSRF: สุ่มแล้วเก็บใน session ไปเทียบตอน callback
+        state = secrets.token_urlsafe(24)
+        session["oauth_state"] = state
+        params = urllib.parse.urlencode({
+            "client_id": client_id,
+            "redirect_uri": _redirect_uri(),
+            "response_type": "code",
+            "scope": "openid email profile",
+            "state": state,
+            "access_type": "online",
+            "prompt": "select_account",
+            "hd": ALLOWED_DOMAIN,   # ให้ Google กรองบัญชีตั้งแต่หน้า consent (ชั้นเสริม ไม่ใช่ชั้นหลัก)
+        })
+        return redirect(f"{_GOOGLE_AUTH_URL}?{params}")
 
-def python_merge(extractions: list[dict]) -> dict:
-    """Merge all extractions into a single dict using Python logic."""
-    extractions = [e for e in extractions if e and isinstance(e, dict)]
-    if not extractions:
-        return {}
-    if len(extractions) == 1:
-        return extractions[0]
+    @app.route("/auth/callback")
+    def auth_callback():
+        # เทียบ state กัน CSRF — ถ้าไม่ตรง (มัก = session/cookie หลุด) แสดงหน้าให้ลองใหม่ได้เลย
+        if not request.args.get("state") or request.args.get("state") != session.pop("oauth_state", None):
+            return _auth_page(
+                "เข้าสู่ระบบไม่สำเร็จ",
+                "session หลุด (มักเกิดจาก cookie เก่าหรือ server เพิ่งรีสตาร์ท)<br>"
+                "ลองล้าง cookie ของ localhost แล้วเข้าสู่ระบบใหม่",
+                400, tone="error")
+        if request.args.get("error"):
+            return _auth_page("เข้าสู่ระบบไม่สำเร็จ",
+                              f"Google ปฏิเสธการเข้าสู่ระบบ: <b>{escape(request.args.get('error'))}</b>",
+                              400, tone="error")
+        code = request.args.get("code")
+        if not code:
+            return _auth_page("เข้าสู่ระบบไม่สำเร็จ", "ไม่ได้รับ code จาก Google", 400, tone="error")
 
-    result = {
-        "program_info": merge_program_info([e.get("program_info", {}) for e in extractions]),
-        "curriculum_structure": merge_curriculum_structure([e.get("curriculum_structure", {}) for e in extractions]),
-        "courses": merge_list_dedup([e.get("courses", []) for e in extractions], key="code"),
-        "academic_plan": merge_academic_plan([e.get("academic_plan", []) for e in extractions]),
-        "graduation_requirements": merge_graduation_requirements([e.get("graduation_requirements", {}) for e in extractions]),
-        "dismissal_criteria": merge_dismissal_criteria([e.get("dismissal_criteria", {}) for e in extractions]),
-        "rules_and_regulations": merge_rules([e.get("rules_and_regulations", {}) for e in extractions]),
-        "career_opportunities": merge_list_unique([e.get("career_opportunities", []) for e in extractions]),
-        "program_outcomes": merge_list_unique([e.get("program_outcomes", []) for e in extractions]),
-        "special_tracks": merge_list_unique([e.get("special_tracks", []) for e in extractions]),
-    }
-    return result
+        try:
+            tokens = _post_form(_GOOGLE_TOKEN_URL, {
+                "code": code,
+                "client_id": _cfg("GOOGLE_CLIENT_ID"),
+                "client_secret": _cfg("GOOGLE_CLIENT_SECRET"),
+                "redirect_uri": _redirect_uri(),
+                "grant_type": "authorization_code",
+            })
+            access_token = tokens.get("access_token")
+            if not access_token:
+                # กันเคส callback ยิงซ้ำ (browser prefetch/silent auth) — ถ้าอีก request แลก token
+                # สำเร็จและ set session ไปแล้ว ก็ถือว่าเข้าสู่ระบบสำเร็จ ไม่ต้องโชว์ error
+                if session.get("user"):
+                    return redirect("/")
+                # โชว์ error จริงจาก Google (invalid_grant / redirect_uri_mismatch / invalid_client ฯลฯ)
+                err = tokens.get("error", "")
+                desc = tokens.get("error_description", "") or str(tokens)
+                print(f"[auth] token exchange failed: {err} — {desc}  (redirect_uri={_redirect_uri()})")
+                hint = {
+                    "invalid_grant": "code หมดอายุหรือถูกใช้ไปแล้ว — ลองเข้าสู่ระบบใหม่ (อย่ารีเฟรชหน้า callback)",
+                    "redirect_uri_mismatch": f"redirect_uri ไม่ตรงกับที่ตั้งใน Google Cloud — ต้องเป็น {_redirect_uri()} เป๊ะ",
+                    "invalid_client": "GOOGLE_CLIENT_ID หรือ GOOGLE_CLIENT_SECRET ไม่ถูกต้อง",
+                }.get(err, "")
+                msg = f"<b>{escape(err)}</b><br>{escape(desc)}"
+                if hint:
+                    msg += f"<br><br>💡 {escape(hint)}"
+                return _auth_page("แลก token ไม่สำเร็จ", msg, 502, tone="error")
+            info = _get_json(_GOOGLE_USERINFO_URL, access_token)
+            if info.get("error"):
+                print(f"[auth] userinfo failed: {info}")
+                return _auth_page("ดึงข้อมูลผู้ใช้ไม่สำเร็จ",
+                                  escape(str(info.get("error_description") or info)), 502, tone="error")
+        except Exception as e:
+            print(f"[auth] callback exception: {type(e).__name__}: {e}")
+            return _auth_page("เชื่อมต่อ Google ไม่สำเร็จ",
+                              f"{escape(type(e).__name__)}: {escape(str(e))}", 502, tone="error")
 
+        # กันอีเมลนอกสถาบัน — อนุญาตเฉพาะโดเมนที่กำหนด (เช่น @kmitl.ac.th)
+        email = info.get("email")
+        if not is_allowed_email(email):
+            session.pop("user", None)
+            print(f"[auth] blocked non-allowed email: {email}")
+            doms = ", ".join("@" + d for d in sorted(_allowed_domains()))
+            return _auth_page(
+                "เข้าสู่ระบบไม่ได้",
+                f"ระบบนี้ใช้ได้เฉพาะอีเมลของสถาบัน (<b>{escape(doms)}</b>) เท่านั้น<br>"
+                f"อีเมลที่ใช้: <b>{escape(email or '(ไม่ทราบ)')}</b>",
+                403, tone="error")
 
-# ─── Core processing ──────────────────────────────────────────────────────────
+        # ── ด่านกันโดเมน (ฝั่ง server เสมอ — ห้ามพึ่ง hd param อย่างเดียว) ──
+        email = (info.get("email") or "").strip().lower()
+        verified = info.get("verified_email")
+        if verified is False or not email.endswith("@" + ALLOWED_DOMAIN):
+            print(f"[auth] domain rejected: email={email!r} verified={verified!r} "
+                  f"(allowed=@{ALLOWED_DOMAIN})")
+            return (
+                "<div style='font-family:sans-serif;max-width:520px;margin:80px auto;text-align:center'>"
+                f"<h3>เข้าสู่ระบบไม่สำเร็จ</h3>"
+                f"<p style='color:#555'>ระบบนี้ใช้ได้เฉพาะอีเมล <b>@{ALLOWED_DOMAIN}</b> เท่านั้น "
+                "กรุณาเข้าสู่ระบบด้วยอีเมลของมหาวิทยาลัย</p>"
+                "<p><a href='/auth/login' style='background:#E8762C;color:#fff;padding:10px 18px;"
+                "border-radius:8px;text-decoration:none'>🔑 ลองเข้าสู่ระบบใหม่</a></p>"
+                "<p><a href='/' style='color:#15457A'>กลับหน้าแรก</a></p></div>"
+            ), 403
 
-def extract_from_chunk(client: OpenAI, text_chunk: str, source_file: str) -> dict:
-    prompt = EXTRACTION_PROMPT.format(text=text_chunk)
-    print(f"    → Calling DeepSeek ({len(text_chunk):,} chars)...")
-    response = call_deepseek(client, SYSTEM_PROMPT, prompt)
-    result = parse_json_response(response)
-    result["_source"] = source_file
-    return result
+        # เก็บเฉพาะข้อมูลที่ต้องใช้ลง session (เซ็นด้วย FLASK_SECRET_KEY)
+        session["user"] = {
+            "id": info.get("id"),
+            "email": info.get("email"),
+            "name": info.get("name"),
+            "picture": info.get("picture"),
+            "role": classify_role(info.get("email")),   # student / advisor
+        }
+        return redirect("/")
 
+    @app.route("/auth/logout", methods=["POST"])
+    def auth_logout():
+        session.pop("user", None)
+        return jsonify({"ok": True})
 
-def process_pdf(client: OpenAI, program_name: str, pdf_file: str) -> dict:
-    """Process a single PDF, returning merged extraction (with caching)."""
-    pdf_path = os.path.join(DATA_DIR, pdf_file)
-    if not os.path.exists(pdf_path):
-        print(f"    [SKIP] file not found")
-        return {}
-
-    cache_path = os.path.join(OUTPUT_DIR, f"_cache_{program_name}_{pdf_file}.json")
-    if os.path.exists(cache_path):
-        with open(cache_path, "r", encoding="utf-8") as f:
-            cached = json.load(f)
-        if cached and len(cached) > 2:  # valid cache
-            print(f"    → Using cache ({os.path.getsize(cache_path):,} bytes)")
-            return cached
-        else:
-            print(f"    → Cache invalid, re-processing")
-            os.remove(cache_path)
-
-    print(f"    → Extracting PDF text...")
-    text = extract_text_from_pdf(pdf_path)
-    print(f"    → {len(text):,} characters extracted")
-
-    if not text.strip():
-        print(f"    [WARN] No text (scanned PDF?)")
-        return {}
-
-    chunks = chunk_text(text)
-    print(f"    → {len(chunks)} chunk(s)")
-
-    chunk_results = []
-    for i, chunk in enumerate(chunks):
-        print(f"    → Chunk {i+1}/{len(chunks)}")
-        result = extract_from_chunk(client, chunk, pdf_file)
-        if result:
-            chunk_results.append(result)
-
-    file_result = python_merge(chunk_results) if chunk_results else {}
-
-    # Cache result
-    if file_result:
-        with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump(file_result, f, ensure_ascii=False, indent=2)
-        print(f"    → Cached ({os.path.getsize(cache_path):,} bytes)")
-
-    return file_result
-
-
-def process_program(client: OpenAI, program_name: str, pdf_files: list[str]) -> dict:
-    print(f"\n{'='*60}")
-    print(f"  Program: {program_name}")
-    print(f"{'='*60}")
-
-    all_extractions = []
-    for pdf_file in pdf_files:
-        print(f"\n  [{pdf_file}]")
-        result = process_pdf(client, program_name, pdf_file)
-        if result:
-            all_extractions.append(result)
-
-    print(f"\n  → Python-merging {len(all_extractions)} file result(s)...")
-    final = python_merge(all_extractions)
-    final["program"] = program_name
-    return final
-
-
-# ─── Main ─────────────────────────────────────────────────────────────────────
-
-def main():
-    if not DEEPSEEK_API_KEY:
-        print("ERROR: DEEPSEEK_API_KEY not set")
-        return
-
-    client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    summary = {}
-
-    for program_name, pdf_files in PROGRAMS.items():
-        result = process_program(client, program_name, pdf_files)
-
-        if result:
-            out_path = os.path.join(OUTPUT_DIR, f"{program_name}.json")
-            with open(out_path, "w", encoding="utf-8") as f:
-                json.dump(result, f, ensure_ascii=False, indent=2)
-
-            courses = result.get("courses", [])
-            plan = result.get("academic_plan", [])
-            info = result.get("program_info", {})
-            summary[program_name] = {
-                "output_file": out_path,
-                "program_name_th": info.get("name_th", ""),
-                "total_credits": info.get("total_credits"),
-                "total_courses": len(courses),
-                "academic_plan_entries": len(plan),
-            }
-            print(f"\n  Saved → {out_path}")
-            print(f"  Courses: {len(courses)}, Plan entries: {len(plan)}")
-
-    summary_path = os.path.join(OUTPUT_DIR, "_summary.json")
-    with open(summary_path, "w", encoding="utf-8") as f:
-        json.dump(summary, f, ensure_ascii=False, indent=2)
-
-    print(f"\n{'='*60}")
-    print("DONE!")
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
-
-
-if __name__ == "__main__":
-    main()
+    @app.route("/auth/me")
+    def auth_me():
+        u = current_user()
+        # กันเหนียว: ถ้า session เก่ามาจากอีเมลนอกโดเมนที่อนุญาต -> ล้างทิ้ง (invalidate)
+        if u and not is_allowed_email(u.get("email")):
+            session.pop("user", None)
+            return jsonify({"user": None})
+        if u and not u.get("role"):        # backfill role ให้ session เก่าที่ยังไม่มี
+            u["role"] = classify_role(u.get("email"))
+            session["user"] = u
+        return jsonify({"user": u})

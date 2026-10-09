@@ -1,215 +1,87 @@
-"""
-Parse prerequisite data from course description PDFs using regex on full text.
-"""
-import os, json, re
-import pdfplumber
+# ตั้งค่า Google Login (Sign in with Google) สำหรับ UniAssist
 
-DATA_DIR   = "/Users/nms/Desktop/AI_ASSIST DS/data"
-OUTPUT_DIR = "/Users/nms/Desktop/AI_ASSIST DS/output/realone"
+โค้ดฝั่งเว็บเชื่อม Google OAuth ไว้ให้แล้ว ([google_auth.py](google_auth.py) + ปุ่มบน header)
+เหลือแค่ **ขอ credentials จาก Google** แล้วใส่ใน `.env` — ขั้นตอนตามนี้ (ทำครั้งเดียว)
 
-COURSE_DESC_FILES = {
-    "IT":   ["IT-3.pdf"],
-    "BIT":  ["BIT-3.pdf"],
-    "DSBA": ["DSBA-3.pdf"],
-    "AIT":  ["AIT_4.pdf"],
-}
+> ⚠️ ผมสร้าง credentials ให้ไม่ได้ เพราะต้องใช้บัญชี Google ของคุณล็อกอินเข้า Google Cloud Console
+> ทำตามด้านล่างแล้ว copy 2 ค่ามาวางใน `.env` ก็ใช้ได้เลย
 
-# Regex: course header line  e.g. "06016401 คณิตศาสตร์สำหรับ... 3(3-0-6)"
-HEADER_RE = re.compile(
-    r"(\d{8})\s+(.+?)\s+(\d+\(\d+-\d+-\d+\))"
-)
-# วิชาบังคับก่อน line
-TH_PRE_RE = re.compile(r"วิชาบังคับก่อน\s*:\s*(.+)")
-# PREREQUISITE line
-EN_PRE_RE = re.compile(r"PREREQUISITE\s*:\s*(.+)", re.IGNORECASE)
-# Single prereq entry: code + name
-SINGLE_PRE_RE = re.compile(r"(\d{8})\s*(.+?)(?=\s*,|\s*และ|$)")
+## 1) สร้าง OAuth Client ใน Google Cloud Console
+1. เข้า https://console.cloud.google.com/ → ล็อกอินด้วยบัญชี Google
+2. สร้าง Project ใหม่ (มุมบนซ้าย) เช่นชื่อ `UniAssist` แล้วเลือกเข้า project นั้น
+3. ไปที่ **APIs & Services → OAuth consent screen**
+   - User type: **External** → Create
+   - กรอกชื่อแอป (เช่น UniAssist), email ของคุณ → บันทึกผ่านไปจนจบ
+   - ที่หน้า **Audience/Test users** กด **Add users** ใส่อีเมล Google ที่จะใช้ทดสอบ (สำคัญ ถ้าแอปยังเป็น Testing)
+4. ไปที่ **APIs & Services → Credentials → + Create Credentials → OAuth client ID**
+   - Application type: **Web application**
+   - **Authorized redirect URIs** กด Add แล้วใส่ให้ตรงเป๊ะ:
+     ```
+     http://localhost:5000/auth/callback
+     ```
+     (ถ้า deploy จริงภายหลัง ให้เพิ่ม URL ของโดเมนจริง เช่น `https://your-domain/auth/callback` ด้วย)
+   - กด Create → จะได้ **Client ID** และ **Client secret** → copy ไว้
 
+## 2) ใส่ค่าใน `.env`
+เปิดไฟล์ `.env` แล้วเติม:
+```
+GOOGLE_CLIENT_ID=<Client ID ที่ได้มา>
+GOOGLE_CLIENT_SECRET=<Client secret ที่ได้มา>
+GOOGLE_REDIRECT_URI=http://localhost:5000/auth/callback
+FLASK_SECRET_KEY=<คีย์สุ่มยาวๆ>
+# (ไม่บังคับ) อีเมลอาจารย์ที่ปรึกษา + โดเมนที่อนุญาต
+ADVISOR_EMAILS=somchai.x@kmitl.ac.th,jane.d@kmitl.ac.th
+ALLOWED_DOMAIN=kmitl.ac.th
+```
+สร้าง `FLASK_SECRET_KEY` ด้วยคำสั่ง:
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+เอาผลลัพธ์มาวางหลัง `FLASK_SECRET_KEY=`
 
-def get_full_text(pdf_path: str) -> str:
-    pages = []
-    with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            t = page.extract_text() or ""
-            pages.append(t)
-    return "\n".join(pages)
+## 3) รันแล้วทดสอบ
+```bash
+python app.py
+```
+เปิด http://localhost:5000 → กดปุ่ม **🔑 เข้าสู่ระบบด้วย Google** ที่มุมขวาบน
+→ เลือกบัญชี Google → กลับมาหน้าเว็บพร้อมชื่อ/รูปโปรไฟล์ + ปุ่ม "ออกจากระบบ"
 
+## เกิดอะไรขึ้นเบื้องหลัง (flow)
+```
+ผู้ใช้กดปุ่ม → /auth/login → เด้งไปหน้ายินยอมของ Google
+   → Google เด้งกลับ /auth/callback?code=... (+state กัน CSRF)
+   → server แลก code เป็น access_token แล้วดึงโปรไฟล์ (email/name/picture)
+   → เก็บลง Flask session (cookie ที่เซ็นด้วย FLASK_SECRET_KEY) → กลับหน้าแรก
+หน้าเว็บเรียก /auth/me เพื่อรู้ว่าใครล็อกอินอยู่ → แสดงชื่อ/รูป + ปุ่มออกจากระบบ
+```
+> ต่างจากสตาร์ตเตอร์ FastAPI/React เดิมที่ส่ง JWT ผ่าน URL — เวอร์ชัน Flask นี้ใช้ **server-side session**
+> ปลอดภัยกว่า (token ไม่โผล่ใน URL) และไม่ต้องพึ่ง localStorage
 
-def normalize_th(s: str) -> str:
-    """Collapse spaces inside common Thai words broken by PDF extraction."""
-    s = re.sub(r"ไม่\s*ม\s*ี", "ไม่มี", s)
-    return s.strip()
+## อยากบังคับให้ต้องล็อกอินก่อนใช้บางหน้า?
+มี decorator `login_required` ใน [google_auth.py](google_auth.py) ให้แล้ว
+เช่นอยาก gate เฉพาะ dashboard อาจารย์ ก็ครอบ route `/dashboard-data`:
+```python
+from google_auth import login_required
 
+@app.route("/dashboard-data")
+@login_required
+def dashboard_data():
+    ...
+```
+(ตอนนี้ยังไม่บังคับ gate หน้าไหน — auth เป็นแบบเสริม แสดงสถานะบน header เฉยๆ ตามที่คุยกันไว้ว่า prototype ไม่ต้องซับซ้อน)
 
-def parse_prereq_str(s: str) -> list[dict]:
-    """Parse 'CODE name, CODE name' or 'ไม่มี' into list of {code, name}."""
-    s = normalize_th(s.strip())
-    if not s or re.search(r"ไม่มี|^NONE$|^None$|^-$", s, re.IGNORECASE):
-        return []
-    results = []
-    # Split by comma or 'และ'
-    for part in re.split(r",\s*|และ\s*", s):
-        part = part.strip()
-        m = re.match(r"(\d{8})\s*(.*)", part)
-        if m:
-            results.append({"code": m.group(1), "name": m.group(2).strip()})
-        elif part:
-            results.append({"code": None, "name": part})
-    return results
+## หมายเหตุความปลอดภัย
+- `GOOGLE_CLIENT_SECRET`, `FLASK_SECRET_KEY` อ่านฝั่ง server เท่านั้น ไม่เคยส่งไป frontend
+- `.env` อยู่ใน `.gitignore` แล้ว — อย่า commit ขึ้น git
+- state parameter กัน CSRF ระหว่าง login flow แล้ว
 
-
-def parse_courses(text: str) -> list[dict]:
-    """
-    Split text into course blocks by header pattern, then extract fields.
-    """
-    # Find all header positions
-    headers = list(HEADER_RE.finditer(text))
-    if not headers:
-        return []
-
-    courses = []
-    for i, hm in enumerate(headers):
-        code    = hm.group(1)
-        name_th = hm.group(2).strip()
-        credits = hm.group(3)
-
-        # The block goes from this header to the next header (or end)
-        block_start = hm.end()
-        block_end   = headers[i+1].start() if i+1 < len(headers) else len(text)
-        block = text[block_start:block_end]
-
-        # Extract English name: first non-empty, non-Thai line right after header
-        name_en = ""
-        for line in block.split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            # Stop at Thai / prerequisite / next course
-            if re.search(r"[ก-๙]", line):
-                break
-            if re.match(r"PREREQUISITE|วิชาบังคับก่อน|\d{8}", line, re.IGNORECASE):
-                break
-            name_en = (name_en + " " + line).strip()
-            # If we got a reasonable length, stop
-            if len(name_en) > 10 and not line.endswith((",", "AND", "OR")):
-                break
-
-        # Extract Thai prerequisite
-        prereqs_th: list[dict] = []
-        m_th = TH_PRE_RE.search(block)
-        if m_th:
-            prereqs_th = parse_prereq_str(m_th.group(1))
-
-        # Extract English prerequisite
-        prereqs_en: list[str] = []
-        m_en = EN_PRE_RE.search(block)
-        if m_en:
-            en_val = m_en.group(1).strip()
-            # Check if the next line is a continuation (no Thai, no new code)
-            after = block[m_en.end():].split("\n")
-            for cont in after:
-                cont = cont.strip()
-                if (cont and not re.search(r"[ก-๙]", cont)
-                        and not re.match(r"\d{8}|PREREQUISITE|วิชาบังคับ", cont, re.IGNORECASE)
-                        and not re.match(r"\d+\s*มคอ", cont)):
-                    en_val += " " + cont
-                    break
-            # Parse individual EN prereq names (strip codes)
-            if not re.search(r"NONE|None", en_val, re.IGNORECASE):
-                for part in re.split(r",\s*|AND\s*", en_val, flags=re.IGNORECASE):
-                    part = re.sub(r"^\d{8}\s*", "", part).strip()
-                    if part:
-                        prereqs_en.append(part)
-
-        # Merge th+en
-        prerequisites = []
-        for idx, p in enumerate(prereqs_th):
-            prerequisites.append({
-                "code":    p["code"],
-                "name_th": p["name"],
-                "name_en": prereqs_en[idx] if idx < len(prereqs_en) else None,
-            })
-
-        courses.append({
-            "code":           code,
-            "name_th":        name_th,
-            "name_en":        name_en,
-            "credits":        credits,
-            "prerequisites":  prerequisites,
-            "has_prerequisite": len(prerequisites) > 0,
-        })
-
-    return courses
-
-
-def merge_into_main(program: str, prereq_map: dict):
-    path = os.path.join(OUTPUT_DIR, f"{program}.json")
-    if not os.path.exists(path):
-        return
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
-    updated = 0
-    for course in data.get("courses", []):
-        code = course.get("code", "").strip()
-        if code in prereq_map:
-            course["prerequisites"]    = prereq_map[code]
-            course["has_prerequisite"] = len(prereq_map[code]) > 0
-            updated += 1
-        else:
-            if "prerequisites" not in course:
-                course["prerequisites"]    = []
-                course["has_prerequisite"] = False
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    print(f"  → merged prereqs into {updated} courses in {program}.json")
-
-
-def main():
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-    for program, pdf_files in COURSE_DESC_FILES.items():
-        print(f"\n=== {program} ===")
-        all_courses: list[dict] = []
-
-        for pdf_file in pdf_files:
-            path = os.path.join(DATA_DIR, pdf_file)
-            if not os.path.exists(path):
-                print(f"  [SKIP] {pdf_file}")
-                continue
-            print(f"  Reading {pdf_file}...")
-            text = get_full_text(path)
-            print(f"  Parsing {len(text):,} chars...")
-            courses = parse_courses(text)
-            print(f"  → {len(courses)} courses parsed")
-            all_courses.extend(courses)
-
-        # Deduplicate
-        seen: dict[str, dict] = {}
-        for c in all_courses:
-            if c["code"] not in seen:
-                seen[c["code"]] = c
-        unique = list(seen.values())
-        with_pre = [c for c in unique if c["has_prerequisite"]]
-
-        print(f"  {len(unique)} unique courses | {len(with_pre)} have prerequisites")
-        print("  Samples:")
-        for c in with_pre[:5]:
-            print(f"    {c['code']} {c['name_th']}")
-            for p in c["prerequisites"]:
-                print(f"      ← {p['code']} {p['name_th']}")
-
-        # Save prereq JSON
-        out = os.path.join(OUTPUT_DIR, f"{program}_prereq.json")
-        with open(out, "w", encoding="utf-8") as f:
-            json.dump(unique, f, ensure_ascii=False, indent=2)
-        print(f"  Saved → {out}")
-
-        # Merge into main
-        prereq_map = {c["code"]: c["prerequisites"] for c in unique}
-        merge_into_main(program, prereq_map)
-
-    print("\nDONE")
-
-
-if __name__ == "__main__":
-    main()
+## การจำกัดโดเมน + บทบาท (role)
+- **ระบบรับเฉพาะอีเมล `@kmitl.ac.th` เท่านั้น** — อีเมลนอกโดเมน (เช่น Gmail ส่วนตัว)
+  หรืออีเมลที่ Google ยังไม่ยืนยัน (`verified_email = false`) จะถูกปฏิเสธด้วย HTTP 403
+  ที่ฝั่ง server เสมอ (ไม่ได้พึ่ง `hd` param บนหน้า consent ของ Google เพียงอย่างเดียว)
+- อยากให้ใครเป็น **role `advisor`** (อาจารย์ที่ปรึกษา — เข้าถึง `/dashboard-data`
+  ที่มีข้อมูล sensitive ของนักศึกษา) ต้องเพิ่มอีเมลนั้นเข้า `ADVISOR_EMAILS` ใน `.env` เอง
+  (คั่นหลายอีเมลด้วย comma) — โดยดีฟอลต์ทุกอีเมลที่ผ่านด่านโดเมนจะได้ role `student` ที่ปลอดภัย
+  ระบบจะไม่เดา role `advisor` จากรูปแบบอีเมลอีกต่อไป
+- ถ้าต้องการเปลี่ยนโดเมนที่อนุญาต ตั้งค่า `ALLOWED_DOMAIN` ใน `.env`
+  (ดีฟอลต์คือ `kmitl.ac.th` ถ้าไม่ได้ตั้ง)

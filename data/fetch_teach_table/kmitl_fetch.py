@@ -1,6 +1,7 @@
 """
 kmitl_fetch.py
 ===============
+
 ขั้นที่ 2 ของ pipeline: ใช้ token + cookie ที่ login_kmitl.py เก็บไว้
 ยิงขอข้อมูลตารางวิชา (teach-table-show) วนหลายปี/เทอม/คณะ
 โดยไม่ต้อง login ใหม่ทุกครั้ง
